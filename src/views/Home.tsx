@@ -16,17 +16,40 @@ function getGreeting(): string {
 
 export function Home({ onNavigate }: HomeProps) {
   const [activeGenre, setActiveGenre] = useState<string>('All');
+  
+  // 1. Grab the live database songs from the brain!
+  const { songs, loadingSongs } = usePlayer(); 
 
+  // 2. Safely extract genres (handles both arrays and single strings)
   const genres = useMemo<string[]>(() => {
     const set = new Set<string>();
-    SONGS.forEach((s) => s.genre.forEach((g) => set.add(g)));
+    songs.forEach((s) => {
+      const genreList = Array.isArray(s.genre) ? s.genre : [s.genre];
+      genreList.forEach((g) => set.add(g || 'Unknown'));
+    });
     return ['All', ...Array.from(set).sort()];
-  }, []);
+  }, [songs]);
 
+  // 3. Filter the live songs based on the selected genre
   const filteredSongs = useMemo(() => {
-    if (activeGenre === 'All') return SONGS;
-    return SONGS.filter((s) => s.genre.includes(activeGenre));
-  }, [activeGenre]);
+    if (activeGenre === 'All') return songs;
+    return songs.filter((s) => {
+      const genreList = Array.isArray(s.genre) ? s.genre : [s.genre];
+      return genreList.includes(activeGenre);
+    });
+  }, [activeGenre, songs]);
+
+  // 4. Show a sleek loading screen while Firebase connects
+  if (loadingSongs) {
+    return (
+      <div className="min-h-full flex items-center justify-center bg-gradient-to-b from-zinc-800/60 via-zinc-950 to-black">
+        <div className="text-zinc-400 text-lg font-medium flex items-center gap-3">
+          <div className="w-5 h-5 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
+          Loading Live Music... 🎧
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-full bg-gradient-to-b from-zinc-800/60 via-zinc-950 to-black">
@@ -38,7 +61,7 @@ export function Home({ onNavigate }: HomeProps) {
             {getGreeting()}
           </h1>
           <p className="text-zinc-400 mt-1 text-sm">
-            Discover &amp; stream your next favorite track
+            Discover & stream your next favorite track
           </p>
         </div>
       </div>
@@ -86,7 +109,7 @@ export function Home({ onNavigate }: HomeProps) {
         ) : (
           <div className="text-center py-20">
             <p className="text-zinc-500 font-medium">
-              No tracks found for &ldquo;{activeGenre}&rdquo;
+              No tracks found for "{activeGenre}"
             </p>
           </div>
         )}
