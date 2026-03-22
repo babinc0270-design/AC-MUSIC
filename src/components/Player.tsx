@@ -9,6 +9,7 @@ import {
   VolumeHighIcon,
   VolumeMuteIcon,
   MusicNoteIcon,
+  MoonIcon,
 } from './Icons';
 
 // ── CUSTOM ICONS ──
@@ -164,6 +165,7 @@ export function Player() {
           {/* 1. MOBILE FULL SCREEN OVERLAY */}
           <div className="md:hidden fixed inset-0 z-[60] bg-zinc-950 flex flex-col pt-12 pb-8 px-6">
             <div className="flex items-center justify-between mb-8">
+              
               <button
                 onClick={() => setIsExpanded(false)}
                 className="p-2 -ml-2 text-zinc-400 hover:text-white transition"
@@ -180,9 +182,7 @@ export function Player() {
                   onClick={() => setShowTimerMenu(!showTimerMenu)}
                   className={`p-2 -mr-2 transition ${sleepTimer ? 'text-emerald-400' : 'text-zinc-400 hover:text-white'}`}
                 >
-                  <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M12.34 2.02a10 10 0 0 0-8.32 15.34 10 10 0 1 0 15.34-8.32 10 10 0 0 1-7.02-7.02z" />
-                  </svg>
+                  <MoonIcon className="w-6 h-6" />
                 </button>
                 {showTimerMenu && renderTimerDropdown('top')}
               </div>
@@ -392,9 +392,7 @@ export function Player() {
                 className={`p-2 rounded-full hover:bg-zinc-800 transition ${sleepTimer ? 'text-emerald-400' : 'text-zinc-400 hover:text-white'}`}
                 title="Sleep Timer"
               >
-                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M12.34 2.02a10 10 0 0 0-8.32 15.34 10 10 0 1 0 15.34-8.32 10 10 0 0 1-7.02-7.02z" />
-                </svg>
+                <MoonIcon className="w-5 h-5" />
               </button>
               {showTimerMenu && renderTimerDropdown('bottom')}
             </div>
@@ -434,4 +432,3 @@ export function Player() {
     </>
   );
 }
-          
