@@ -7,12 +7,13 @@ import React, {
   type ReactNode,
 } from 'react';
 import { collection, getDocs } from 'firebase/firestore';
-import { db } from '../firebase'; // Connects to your Firebase!
+import { db } from '../firebase';
 import type { Song } from '../types';
+import YouTube, { YouTubeEvent, YouTubePlayer } from 'react-youtube';
 
 interface PlayerContextValue {
-  songs: Song[];          // NEW: The live database!
-  loadingSongs: boolean;  // NEW: Loading state for the database!
+  songs: Song[];
+  loadingSongs: boolean;
   currentSong: Song | null;
   isPlaying: boolean;
   progress: number;
@@ -36,11 +37,12 @@ export function usePlayer(): PlayerContextValue {
 }
 
 export function PlayerProvider({ children }: { children: ReactNode }) {
-  // NEW: Database States
   const [songs, setSongs] = useState<Song[]>([]);
   const [loadingSongs, setLoadingSongs] = useState(true);
 
-  const audioRef = useRef<HTMLAudioElement | null>(null);
+  // NEW: YouTube Player State
+  const [ytPlayer, setYtPlayer] = useState<YouTubePlayer | null>(null);
+
   const [currentSong, setCurrentSong] = useState<Song | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -51,18 +53,20 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const historyRef = useRef<Song[]>([]);
   const currentSongRef = useRef<Song | null>(null);
   const playNextRef = useRef<() => void>();
-  
-  // Keep a ref of the songs for the auto-play engine to use
   const songsRef = useRef<Song[]>([]);
 
-  /* ── 1. Fetch Live Database on Startup ── */
+  /* ── 1. Fetch Live Database ── */
   useEffect(() => {
     const fetchSongs = async () => {
       try {
         const querySnapshot = await getDocs(collection(db, 'songs'));
         const liveSongs = querySnapshot.docs.map((doc) => doc.data() as Song);
-        setSongs(liveSongs);
-        songsRef.current = liveSongs; // Give them to the DJ Engine
+        
+        // Shuffle the songs so the homepage looks fresh!
+        const shuffled = liveSongs.sort(() => 0.5 - Math.random());
+        
+        setSongs(shuffled);
+        songsRef.current = shuffled;
       } catch (error) {
         console.error("Error fetching live songs:", error);
       } finally {
@@ -72,7 +76,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     fetchSongs();
   }, []);
 
-  /* ── Auto-Play Logic (Now uses Live Data) ── */
+  /* ── Auto-Play Logic ── */
   const playNext = () => {
     const current = currentSongRef.current;
     const allSongs = songsRef.current;
@@ -102,7 +106,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   /* ── Previous Logic ── */
   const playPrevious = () => {
-    if (audioRef.current && audioRef.current.currentTime > 3) {
+    if (currentTime > 3) {
       seek(0);
       return;
     }
@@ -116,7 +120,6 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   /* ── Core Play Logic ── */
   const internalPlaySong = (song: Song, isBacktrack: boolean) => {
-    if (!audioRef.current) return;
     if (currentSongRef.current?.id === song.id) {
       togglePlay();
       return;
@@ -129,94 +132,89 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       }
     }
 
-    audioRef.current.pause();
-    audioRef.current.src = song.audio;
-    audioRef.current.load();
-    audioRef.current
-      .play()
-      .then(() => setIsPlaying(true))
-      .catch((err) => console.error('Playback error:', err));
-
     currentSongRef.current = song;
     setCurrentSong(song);
     setProgress(0);
     setCurrentTime(0);
     setDuration(0);
+    setIsPlaying(true); // Triggers the YouTube component to auto-play when ready
   };
 
   const playSong = (song: Song): void => internalPlaySong(song, false);
 
   const togglePlay = (): void => {
-    if (!audioRef.current || !currentSong) return;
+    if (!ytPlayer || !currentSong) return;
     if (isPlaying) {
-      audioRef.current.pause();
+      ytPlayer.pauseVideo();
       setIsPlaying(false);
     } else {
-      audioRef.current.play().then(() => setIsPlaying(true)).catch(console.error);
+      ytPlayer.playVideo();
+      setIsPlaying(true);
     }
   };
 
-  const seek = (pct: number): void => {
-    if (!audioRef.current) return;
-    const dur = audioRef.current.duration;
-    if (!dur || isNaN(dur)) return;
+  const seek = async (pct: number) => {
+    if (!ytPlayer) return;
+    const dur = await ytPlayer.getDuration();
+    if (!dur) return;
     const newTime = (pct / 100) * dur;
-    audioRef.current.currentTime = newTime;
+    ytPlayer.seekTo(newTime, true);
     setProgress(pct);
     setCurrentTime(newTime);
   };
 
   const setVolume = (v: number): void => {
-    if (audioRef.current) audioRef.current.volume = Math.max(0, Math.min(1, v));
-    setVolumeState(v);
+    const clamped = Math.max(0, Math.min(1, v));
+    if (ytPlayer) ytPlayer.setVolume(clamped * 100); // YouTube volume is 0-100
+    setVolumeState(clamped);
   };
 
-  /* ── Audio Event Listeners ── */
+  /* ── YouTube Timer Sync ── */
+  // YouTube doesn't have a built-in time tracker event, so we create our own clock!
   useEffect(() => {
-    const audio = new Audio();
-    audio.volume = 0.8;
-    audioRef.current = audio;
+    let interval: NodeJS.Timeout;
+    if (isPlaying && ytPlayer) {
+      interval = setInterval(async () => {
+        try {
+          const time = await ytPlayer.getCurrentTime();
+          const dur = await ytPlayer.getDuration();
+          setCurrentTime(time);
+          setDuration(dur);
+          if (dur > 0) {
+            setProgress((time / dur) * 100);
+          }
+        } catch (e) {
+          // Ignore errors if player is still loading
+        }
+      }, 1000);
+    }
+    return () => clearInterval(interval);
+  }, [isPlaying, ytPlayer]);
 
-    const handleTimeUpdate = () => {
-      setCurrentTime(audio.currentTime);
-      if (audio.duration && !isNaN(audio.duration)) {
-        setProgress((audio.currentTime / audio.duration) * 100);
-      }
-    };
-    const handleLoadedMetadata = () => {
-      if (!isNaN(audio.duration)) setDuration(audio.duration);
-    };
-    const handleEnded = () => {
-      if (playNextRef.current) {
-        playNextRef.current();
-      } else {
-        setIsPlaying(false);
-        setProgress(0);
-        setCurrentTime(0);
-      }
-    };
-    const handleError = () => setIsPlaying(false);
+  /* ── YouTube Player Events ── */
+  const onPlayerReady = (event: YouTubeEvent) => {
+    setYtPlayer(event.target);
+    event.target.setVolume(volume * 100);
+  };
 
-    audio.addEventListener('timeupdate', handleTimeUpdate);
-    audio.addEventListener('loadedmetadata', handleLoadedMetadata);
-    audio.addEventListener('ended', handleEnded);
-    audio.addEventListener('error', handleError);
+  const onPlayerStateChange = (event: YouTubeEvent) => {
+    // 1 = Playing, 2 = Paused, 0 = Ended
+    if (event.data === 1) setIsPlaying(true);
+    if (event.data === 2) setIsPlaying(false);
+    if (event.data === 0 && playNextRef.current) playNextRef.current();
+  };
 
-    return () => {
-      audio.removeEventListener('timeupdate', handleTimeUpdate);
-      audio.removeEventListener('loadedmetadata', handleLoadedMetadata);
-      audio.removeEventListener('ended', handleEnded);
-      audio.removeEventListener('error', handleError);
-      audio.pause();
-      audio.src = '';
-    };
-  }, []);
+  const onPlayerError = () => {
+    // If a music video has embedding disabled by the artist, just skip to the next hit automatically!
+    console.warn("YouTube Video Embedding Restricted - Skipping to next track");
+    if (playNextRef.current) playNextRef.current();
+  };
 
   return (
     <PlayerContext.Provider
       value={{
-        songs,          // <--- Exposes the live database to the whole app!
-        loadingSongs,   // <--- Lets the app know if it's still downloading!
+        songs,
+        loadingSongs,
         currentSong,
         isPlaying,
         progress,
@@ -232,6 +230,30 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       }}
     >
       {children}
+      
+      {/* THE SECRET WEAPON: The Hidden YouTube Engine */}
+      <div className="hidden">
+        {currentSong && (
+          <YouTube
+            videoId={currentSong.audio} // Uses the YouTube ID saved by our Python Bot
+            opts={{
+              height: '0',
+              width: '0',
+              playerVars: {
+                autoplay: 1,
+                controls: 0,
+                disablekb: 1,
+                fs: 0,
+                modestbranding: 1,
+                playsinline: 1,
+              },
+            }}
+            onReady={onPlayerReady}
+            onStateChange={onPlayerStateChange}
+            onError={onPlayerError}
+          />
+        )}
+      </div>
     </PlayerContext.Provider>
   );
 }
