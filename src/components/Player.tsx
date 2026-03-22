@@ -1,5 +1,8 @@
 import React, { useState } from 'react';
 import { usePlayer } from '../context/PlayerContext';
+import { useAuth } from '../context/AuthContext';
+import { doc, updateDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
+import { db } from '../firebase';
 import {
   PlayIcon,
   PauseIcon,
@@ -10,52 +13,35 @@ import {
   MusicNoteIcon,
 } from './Icons';
 
-// Custom icons for the expanded views
+// ── CUSTOM ICONS ──
 const ExpandIcon = ({ className }: { className?: string }) => (
-  <svg
-    className={className}
-    fill="none"
-    viewBox="0 0 24 24"
-    stroke="currentColor"
-  >
-    <path
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      strokeWidth={2}
-      d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"
-    />
+  <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
   </svg>
 );
 
 const ChevronDownIcon = ({ className }: { className?: string }) => (
-  <svg
-    className={className}
-    fill="none"
-    viewBox="0 0 24 24"
-    stroke="currentColor"
-  >
-    <path
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      strokeWidth={2.5}
-      d="M19 9l-7 7-7-7"
-    />
+  <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" />
   </svg>
 );
 
 const CloseIcon = ({ className }: { className?: string }) => (
-  <svg
-    className={className}
-    fill="none"
-    viewBox="0 0 24 24"
-    stroke="currentColor"
-  >
-    <path
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      strokeWidth={2}
-      d="M6 18L18 6M6 6l12 12"
-    />
+  <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+  </svg>
+);
+
+// NEW: Heart Icons built right in!
+const HeartOutlineIcon = ({ className }: { className?: string }) => (
+  <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+  </svg>
+);
+
+const HeartFilledIcon = ({ className }: { className?: string }) => (
+  <svg className={className} fill="currentColor" viewBox="0 0 24 24">
+    <path fillRule="evenodd" d="M3.172 5.172a4 4 0 015.656 0L10 6.343l1.172-1.171a4 4 0 115.656 5.656L10 17.657l-6.828-6.829a4 4 0 010-5.656z" clipRule="evenodd" />
   </svg>
 );
 
@@ -81,11 +67,17 @@ export function Player() {
     playPrevious,
   } = usePlayer();
 
+  // Bring in the Auth Context safely
+  const authContext = useAuth() as any;
+  const userProfile = authContext?.userProfile;
+  const authUser = authContext?.user || authContext?.currentUser; 
+
   const [isMuted, setIsMuted] = useState(false);
   const [prevVolume, setPrevVolume] = useState(0.8);
-
-  // NEW: Controls whether the full-screen/sidebar is open!
   const [isExpanded, setIsExpanded] = useState(false);
+
+  // Check if current song is liked
+  const isLiked = currentSong && userProfile?.likedSongs?.includes(currentSong.id);
 
   const handleMuteToggle = () => {
     if (isMuted) {
@@ -108,6 +100,30 @@ export function Player() {
     seek(parseFloat(e.target.value));
   };
 
+  // Firebase Like Toggle Logic
+  const handleToggleLike = async (e: React.MouseEvent) => {
+    e.stopPropagation(); // Prevents clicks from triggering other elements
+    if (!authUser || !currentSong) {
+      alert("Please sign in to like songs!");
+      return;
+    }
+
+    const userRef = doc(db, 'users', authUser.uid);
+    try {
+      if (isLiked) {
+        await updateDoc(userRef, {
+          likedSongs: arrayRemove(currentSong.id)
+        });
+      } else {
+        await updateDoc(userRef, {
+          likedSongs: arrayUnion(currentSong.id)
+        });
+      }
+    } catch (error) {
+      console.error("Error updating liked status:", error);
+    }
+  };
+
   if (!currentSong) {
     return (
       <div className="fixed bottom-16 md:bottom-0 left-0 right-0 md:left-60 h-[72px] bg-zinc-900/95 backdrop-blur-xl border-t border-zinc-800/40 z-40 flex items-center justify-center">
@@ -126,7 +142,6 @@ export function Player() {
         <>
           {/* 1. MOBILE FULL SCREEN OVERLAY */}
           <div className="md:hidden fixed inset-0 z-[60] bg-zinc-950 flex flex-col pt-12 pb-8 px-6">
-            {/* Header */}
             <div className="flex items-center justify-between mb-8">
               <button
                 onClick={() => setIsExpanded(false)}
@@ -137,10 +152,9 @@ export function Player() {
               <span className="text-xs font-bold tracking-widest text-zinc-400 uppercase">
                 Now Playing
               </span>
-              <div className="w-6 h-6" /> {/* Invisible spacer for alignment */}
+              <div className="w-6 h-6" /> 
             </div>
 
-            {/* Huge Cover Art */}
             <div className="flex-1 min-h-0 flex items-center justify-center mb-8">
               <img
                 src={currentSong.cover}
@@ -149,14 +163,27 @@ export function Player() {
               />
             </div>
 
-            {/* Info */}
-            <div className="mb-6">
-              <h2 className="text-2xl font-bold text-white mb-1 truncate">
-                {currentSong.title}
-              </h2>
-              <p className="text-emerald-400 text-lg truncate">
-                {currentSong.artist.join(', ')}
-              </p>
+            {/* Info + MOBILE LIKE BUTTON */}
+            <div className="mb-6 flex items-start justify-between gap-4">
+              <div className="flex-1 min-w-0">
+                <h2 className="text-2xl font-bold text-white mb-1 truncate">
+                  {currentSong.title}
+                </h2>
+                <p className="text-emerald-400 text-lg truncate">
+                  {currentSong.artist.join(', ')}
+                </p>
+              </div>
+              
+              <button 
+                onClick={handleToggleLike} 
+                className="mt-1 flex-shrink-0 hover:scale-110 active:scale-95 transition-transform"
+              >
+                {isLiked ? (
+                  <HeartFilledIcon className="w-8 h-8 text-emerald-500 drop-shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
+                ) : (
+                  <HeartOutlineIcon className="w-8 h-8 text-zinc-400 hover:text-white transition-colors" />
+                )}
+              </button>
             </div>
 
             {/* Mobile Scrubber */}
@@ -184,26 +211,16 @@ export function Player() {
 
             {/* Big Mobile Controls */}
             <div className="flex items-center justify-center gap-8 mb-4">
-              <button
-                onClick={playPrevious}
-                className="text-zinc-400 hover:text-white transition"
-              >
+              <button onClick={playPrevious} className="text-zinc-400 hover:text-white transition">
                 <SkipPrevIcon className="w-8 h-8" />
               </button>
               <button
                 onClick={togglePlay}
                 className="w-16 h-16 rounded-full bg-emerald-500 text-black flex items-center justify-center hover:scale-105 active:scale-95 transition shadow-lg shadow-emerald-500/30"
               >
-                {isPlaying ? (
-                  <PauseIcon className="w-8 h-8" />
-                ) : (
-                  <PlayIcon className="w-8 h-8 ml-1" />
-                )}
+                {isPlaying ? <PauseIcon className="w-8 h-8" /> : <PlayIcon className="w-8 h-8 ml-1" />}
               </button>
-              <button
-                onClick={playNext}
-                className="text-zinc-400 hover:text-white transition"
-              >
+              <button onClick={playNext} className="text-zinc-400 hover:text-white transition">
                 <SkipNextIcon className="w-8 h-8" />
               </button>
             </div>
@@ -227,12 +244,28 @@ export function Player() {
               className="w-full aspect-square object-cover rounded-xl shadow-xl shadow-black/40 mb-4"
             />
 
-            <h2 className="text-xl font-bold text-white mb-1">
-              {currentSong.title}
-            </h2>
-            <p className="text-zinc-400 text-sm mb-6">
-              {currentSong.artist.join(', ')}
-            </p>
+            {/* Info + DESKTOP LIKE BUTTON */}
+            <div className="flex items-start justify-between gap-3 mb-6">
+              <div className="flex-1 min-w-0">
+                <h2 className="text-xl font-bold text-white mb-1 truncate">
+                  {currentSong.title}
+                </h2>
+                <p className="text-zinc-400 text-sm truncate">
+                  {currentSong.artist.join(', ')}
+                </p>
+              </div>
+
+              <button 
+                onClick={handleToggleLike} 
+                className="mt-1 flex-shrink-0 hover:scale-110 active:scale-95 transition-transform"
+              >
+                {isLiked ? (
+                  <HeartFilledIcon className="w-6 h-6 text-emerald-500 drop-shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
+                ) : (
+                  <HeartOutlineIcon className="w-6 h-6 text-zinc-400 hover:text-white transition-colors" />
+                )}
+              </button>
+            </div>
 
             {/* Extra desktop info box */}
             <div className="bg-zinc-950/50 rounded-xl p-4 border border-zinc-800/50">
@@ -249,13 +282,11 @@ export function Player() {
       )}
 
       {/* ── STANDARD BOTTOM BAR ── */}
-      {/* Hides completely on mobile if expanded! */}
       <div
         className={`fixed bottom-16 md:bottom-0 left-0 right-0 md:left-60 bg-zinc-900/95 backdrop-blur-xl border-t border-zinc-800/40 z-40 ${
           isExpanded ? 'hidden md:block' : 'block'
         }`}
       >
-        {/* Scrubber — flush at the very top */}
         <div className="relative h-1 group cursor-pointer">
           <div className="absolute inset-0 bg-zinc-700/60" />
           <div
@@ -278,9 +309,7 @@ export function Player() {
           />
         </div>
 
-        {/* Player body */}
         <div className="flex items-center px-4 py-3 gap-3">
-          {/* Song info (Now Clickable!) */}
           <div
             onClick={() => setIsExpanded(!isExpanded)}
             className="flex items-center gap-3 flex-1 min-w-0 cursor-pointer group hover:bg-zinc-800/40 p-1 -ml-1 rounded-lg transition-colors"
@@ -298,39 +327,24 @@ export function Player() {
                 {currentSong.artist.join(', ')}
               </p>
             </div>
-            {/* Expand Icon visible on hover */}
             <ExpandIcon className="w-4 h-4 text-zinc-500 opacity-0 group-hover:opacity-100 transition-opacity hidden md:block ml-2" />
           </div>
 
-          {/* Controls */}
           <div className="flex items-center gap-2">
-            <button
-              className="hidden md:flex text-zinc-500 hover:text-white transition-colors"
-              onClick={playPrevious}
-            >
+            <button className="hidden md:flex text-zinc-500 hover:text-white transition-colors" onClick={playPrevious}>
               <SkipPrevIcon className="w-5 h-5" />
             </button>
-
             <button
               onClick={togglePlay}
               className="w-10 h-10 rounded-full bg-white hover:bg-zinc-200 text-black flex items-center justify-center transition-all hover:scale-105 active:scale-95 shadow-lg"
             >
-              {isPlaying ? (
-                <PauseIcon className="w-5 h-5" />
-              ) : (
-                <PlayIcon className="w-5 h-5 ml-0.5" />
-              )}
+              {isPlaying ? <PauseIcon className="w-5 h-5" /> : <PlayIcon className="w-5 h-5 ml-0.5" />}
             </button>
-
-            <button
-              className="hidden md:flex text-zinc-500 hover:text-white transition-colors"
-              onClick={playNext}
-            >
+            <button className="hidden md:flex text-zinc-500 hover:text-white transition-colors" onClick={playNext}>
               <SkipNextIcon className="w-5 h-5" />
             </button>
           </div>
 
-          {/* Time + Volume — desktop */}
           <div className="hidden md:flex items-center gap-4 flex-1 justify-end min-w-0">
             <div className="flex items-center gap-1.5 text-xs text-zinc-500 tabular-nums font-medium">
               <span className="text-zinc-300">{formatTime(currentTime)}</span>
@@ -339,18 +353,10 @@ export function Player() {
             </div>
 
             <div className="flex items-center gap-2">
-              <button
-                onClick={handleMuteToggle}
-                className="text-zinc-500 hover:text-white transition-colors"
-              >
-                {isMuted || volume === 0 ? (
-                  <VolumeMuteIcon className="w-5 h-5" />
-                ) : (
-                  <VolumeHighIcon className="w-5 h-5" />
-                )}
+              <button onClick={handleMuteToggle} className="text-zinc-500 hover:text-white transition-colors">
+                {isMuted || volume === 0 ? <VolumeMuteIcon className="w-5 h-5" /> : <VolumeHighIcon className="w-5 h-5" />}
               </button>
 
-              {/* Advanced Green Volume Slider */}
               <div className="relative w-24 h-1 group cursor-pointer flex items-center">
                 <div className="absolute inset-0 bg-zinc-700/60 rounded-full" />
                 <div
@@ -359,9 +365,7 @@ export function Player() {
                 />
                 <div
                   className="absolute top-1/2 -translate-y-1/2 w-3 h-3 bg-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none shadow-md"
-                  style={{
-                    left: `calc(${(isMuted ? 0 : volume) * 100}% - 6px)`,
-                  }}
+                  style={{ left: `calc(${(isMuted ? 0 : volume) * 100}% - 6px)` }}
                 />
                 <input
                   type="range"
@@ -375,8 +379,6 @@ export function Player() {
               </div>
             </div>
           </div>
-
-          {/* Time — mobile only */}
           <div className="md:hidden text-xs text-zinc-500 tabular-nums font-medium flex-shrink-0">
             {formatTime(currentTime)}
           </div>
