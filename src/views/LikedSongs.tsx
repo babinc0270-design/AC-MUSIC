@@ -1,7 +1,8 @@
 import { useMemo } from 'react';
-import { SONGS } from '../data';
+// Delete the "import { SONGS } from '../data'" line entirely!
 import { useAuth } from '../context/AuthContext';
-import { SongCard } from '../components/SongCard';
+import { usePlayer } from '../context/PlayerContext'; // <--- Add this!
+import SongCard from '../components/SongCard';
 import { HeartFilledIcon } from '../components/Icons';
 
 interface LikedSongsProps {
@@ -10,13 +11,14 @@ interface LikedSongsProps {
 
 export default function LikedSongs({ onAuthRequired }: LikedSongsProps) {
   const { userProfile } = useAuth();
+  const { songs } = usePlayer(); // <--- Grab the live songs here!
 
   const likedSongs = useMemo(() => {
-    if (!userProfile) return [];
-    // The "|| []" ensures it never crashes even if likedSongs is temporarily missing
-    return SONGS.filter((s) => (userProfile.likedSongs || []).includes(s.id));
-  }, [userProfile]);
+    if (!userProfile || !songs) return [];
+    return songs.filter((s) => userProfile.likedSongs.includes(s.id));
+  }, [userProfile, songs]);
 
+  // ... keep the rest of your file exactly the same!
   if (!userProfile) {
     return (
       <div className="flex flex-col items-center justify-center h-[60vh] gap-4 text-zinc-500 px-6 text-center">
