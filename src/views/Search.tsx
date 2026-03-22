@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { usePlayer } from '../context/PlayerContext';
 import type { Song } from '../types';
 import { SongCard } from '../components/SongCard';
@@ -10,11 +10,14 @@ interface SearchProps {
 
 export default function Search({ onAuthRequired }: SearchProps) {
   const [query, setQuery] = useState('');
-  
-  // Grab the live database songs!
   const { songs, loadingSongs } = usePlayer();
+  
+  // New States for our Dynamic API
+  const [isSearchingWeb, setIsSearchingWeb] = useState(false);
+  const [webResults, setWebResults] = useState<Song[]>([]);
 
-  const results = useMemo<Song[]>(() => {
+  // 1. Check local database first
+  const localResults = useMemo<Song[]>(() => {
     const q = query.trim().toLowerCase();
     if (!q) return songs;
     return songs.filter((s) => {
@@ -22,22 +25,42 @@ export default function Search({ onAuthRequired }: SearchProps) {
       return (
         s.title.toLowerCase().includes(q) ||
         s.album.toLowerCase().includes(q) ||
-        s.artist.some((a) => a.toLowerCase().includes(q)) ||
-        genreList.some((g) => g.toLowerCase().includes(q))
+        s.artist.some((a) => a.toLowerCase().includes(q))
       );
     });
   }, [query, songs]);
 
-  if (loadingSongs) {
-    return (
-      <div className="px-4 md:px-8 py-24 flex items-center justify-center">
-        <div className="text-zinc-400 text-lg font-medium flex items-center gap-3">
-          <div className="w-5 h-5 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
-          Searching Database... 🎧
-        </div>
-      </div>
-    );
-  }
+  // 2. The Auto-Fetch Magic Trigger
+  useEffect(() => {
+    const q = query.trim();
+    // If we have a query, BUT local database has 0 results
+    if (q && localResults.length === 0) {
+      // Wait 1 second after typing stops to prevent spamming the API
+      const timer = setTimeout(async () => {
+        setIsSearchingWeb(true);
+        try {
+          // CHANGE THIS URL LATER WHEN YOU HOST THE PYTHON API 24/7
+          const response = await fetch(`http://127.0.0.1:5000/search?q=${encodeURIComponent(q)}`);
+          const newSongs = await response.json();
+          if (Array.isArray(newSongs)) {
+            setWebResults(newSongs); // Injects new songs instantly!
+          }
+        } catch (error) {
+          console.error("API failed to fetch:", error);
+        } finally {
+          setIsSearchingWeb(false);
+        }
+      }, 1000);
+      return () => clearTimeout(timer);
+    } else {
+      setWebResults([]); // Clear web results if local results are found
+    }
+  }, [query, localResults.length]);
+
+  // 3. Decide which results to show
+  const displayResults = localResults.length > 0 ? localResults : webResults;
+
+  if (loadingSongs) return <div className="p-24 text-center text-zinc-500">Loading Database...</div>;
 
   return (
     <div className="px-4 md:px-8 py-6">
@@ -51,40 +74,27 @@ export default function Search({ onAuthRequired }: SearchProps) {
           type="text"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search songs, artists, albums, genres…"
-          className="w-full bg-zinc-800 text-white placeholder-zinc-500 rounded-full pl-12 pr-5 py-3 text-sm outline-none focus:ring-2 focus:ring-emerald-500 transition"
+          placeholder="Search any song in the world..."
+          className="w-full bg-zinc-800 text-white placeholder-zinc-500 rounded-full pl-12 pr-5 py-3 outline-none focus:ring-2 focus:ring-emerald-500 transition"
         />
-        {query && (
-          <button
-            onClick={() => setQuery('')}
-            className="absolute inset-y-0 right-4 flex items-center text-zinc-400 hover:text-white transition text-lg leading-none"
-          >
-            ×
-          </button>
-        )}
       </div>
 
-      {query && (
-        <p className="text-zinc-400 text-sm mb-4">
-          {results.length === 0
-            ? 'No results found'
-            : `${results.length} result${results.length !== 1 ? 's' : ''} for "${query}"`}
-        </p>
-      )}
-
-      {results.length > 0 ? (
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-4">
-          {results.map((song) => (
+      {isSearchingWeb ? (
+        <div className="flex flex-col items-center justify-center py-20 text-emerald-500">
+           <div className="w-8 h-8 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin mb-4"></div>
+           <p className="font-bold animate-pulse">Hunting the web for "{query}"...</p>
+        </div>
+      ) : displayResults.length > 0 ? (
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+          {displayResults.map((song) => (
             <SongCard key={song.id} song={song} onAuthRequired={onAuthRequired} />
           ))}
         </div>
-      ) : (
-        <div className="flex flex-col items-center justify-center py-24 text-zinc-600">
-          <SearchIcon className="w-14 h-14 mb-4" />
-          <p className="text-lg font-medium text-zinc-400">No songs found</p>
-          <p className="text-sm mt-1">Try a different keyword</p>
+      ) : query && !isSearchingWeb ? (
+        <div className="text-center py-24 text-zinc-600">
+          <p>No results found anywhere for "{query}"</p>
         </div>
-      )}
+      ) : null}
     </div>
   );
 }
