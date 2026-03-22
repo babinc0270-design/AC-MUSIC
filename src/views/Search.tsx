@@ -40,7 +40,7 @@ export default function Search({ onAuthRequired }: SearchProps) {
         setIsSearchingWeb(true);
         try {
           // CHANGE THIS URL LATER WHEN YOU HOST THE PYTHON API 24/7
-          const response = await fetch(`http://127.0.0.1:5000/search?q=${encodeURIComponent(q)}`);
+          const response = await fetch(`https://ac-music-search-bot.onrender.com/search?q=${encodeURIComponent(q)}`);
           const newSongs = await response.json();
           if (Array.isArray(newSongs)) {
             setWebResults(newSongs); // Injects new songs instantly!
