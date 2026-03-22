@@ -58,6 +58,8 @@ export function Player() {
     currentTime,
     duration,
     volume,
+    sleepTimer,
+    setSleepTimerAction,
     togglePlay,
     seek,
     setVolume,
@@ -65,7 +67,6 @@ export function Player() {
     playPrevious,
   } = usePlayer();
 
-  // Grab the magic toggle function directly from your AuthContext!
   const authContext = useAuth() as any;
   const userProfile = authContext?.userProfile;
   const authUser = authContext?.user || authContext?.currentUser; 
@@ -74,8 +75,8 @@ export function Player() {
   const [isMuted, setIsMuted] = useState(false);
   const [prevVolume, setPrevVolume] = useState(0.8);
   const [isExpanded, setIsExpanded] = useState(false);
+  const [showTimerMenu, setShowTimerMenu] = useState(false);
 
-  // Perfectly synced state reading directly from your profile
   const isLiked = currentSong && userProfile?.likedSongs?.includes(currentSong.id);
 
   const handleMuteToggle = () => {
@@ -99,9 +100,8 @@ export function Player() {
     seek(parseFloat(e.target.value));
   };
 
-  // Uses YOUR app's built-in sync function
   const handleToggleLike = async (e: React.MouseEvent) => {
-    e.stopPropagation(); 
+    e.stopPropagation();
     if (!authUser || !currentSong) {
       alert("Please sign in to like songs!");
       return;
@@ -111,6 +111,39 @@ export function Player() {
       await toggleLikedSong(currentSong.id);
     }
   };
+
+  const renderTimerDropdown = (position: 'top' | 'bottom') => (
+    <div className={`absolute ${position === 'bottom' ? 'bottom-full mb-4' : 'top-full mt-2'} right-0 w-48 bg-zinc-900 border border-zinc-800 rounded-lg shadow-2xl overflow-hidden z-[70]`}>
+      <div className="p-3 border-b border-zinc-800">
+        <p className="text-xs font-bold text-zinc-400 uppercase tracking-wider">Sleep Timer</p>
+      </div>
+      <div className="flex flex-col py-1">
+        {[
+          { label: 'Off', value: null },
+          { label: '15 minutes', value: 15 },
+          { label: '30 minutes', value: 30 },
+          { label: '45 minutes', value: 45 },
+          { label: '1 hour', value: 60 },
+          { label: 'End of track', value: 'track' },
+        ].map((option) => (
+          <button
+            key={option.label}
+            onClick={() => {
+              setSleepTimerAction(option.value as number | 'track' | null);
+              setShowTimerMenu(false);
+            }}
+            className={`text-left px-4 py-2 text-sm transition ${
+              sleepTimer === option.value 
+                ? 'text-emerald-400 bg-zinc-800' 
+                : 'text-zinc-300 hover:bg-zinc-800 hover:text-white'
+            }`}
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
 
   if (!currentSong) {
     return (
@@ -140,7 +173,19 @@ export function Player() {
               <span className="text-xs font-bold tracking-widest text-zinc-400 uppercase">
                 Now Playing
               </span>
-              <div className="w-6 h-6" /> 
+              
+              {/* MOBILE SLEEP TIMER MENU */}
+              <div className="relative flex items-center">
+                <button 
+                  onClick={() => setShowTimerMenu(!showTimerMenu)}
+                  className={`p-2 -mr-2 transition ${sleepTimer ? 'text-emerald-400' : 'text-zinc-400 hover:text-white'}`}
+                >
+                  <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M12.34 2.02a10 10 0 0 0-8.32 15.34 10 10 0 1 0 15.34-8.32 10 10 0 0 1-7.02-7.02z" />
+                  </svg>
+                </button>
+                {showTimerMenu && renderTimerDropdown('top')}
+              </div>
             </div>
 
             <div className="flex-1 min-h-0 flex items-center justify-center mb-8">
@@ -340,6 +385,20 @@ export function Player() {
               <span>{formatTime(duration)}</span>
             </div>
 
+            {/* DESKTOP SLEEP TIMER MENU */}
+            <div className="relative flex items-center">
+              <button 
+                onClick={() => setShowTimerMenu(!showTimerMenu)}
+                className={`p-2 rounded-full hover:bg-zinc-800 transition ${sleepTimer ? 'text-emerald-400' : 'text-zinc-400 hover:text-white'}`}
+                title="Sleep Timer"
+              >
+                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M12.34 2.02a10 10 0 0 0-8.32 15.34 10 10 0 1 0 15.34-8.32 10 10 0 0 1-7.02-7.02z" />
+                </svg>
+              </button>
+              {showTimerMenu && renderTimerDropdown('bottom')}
+            </div>
+
             <div className="flex items-center gap-2">
               <button onClick={handleMuteToggle} className="text-zinc-500 hover:text-white transition-colors">
                 {isMuted || volume === 0 ? <VolumeMuteIcon className="w-5 h-5" /> : <VolumeHighIcon className="w-5 h-5" />}
@@ -375,3 +434,4 @@ export function Player() {
     </>
   );
 }
+          
