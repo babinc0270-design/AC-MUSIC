@@ -1,5 +1,24 @@
-import type { Song } from './types';
+import { useMemo } from 'react';
+// Delete the "import { SONGS } from '../data'" line entirely!
+import { useAuth } from '../context/AuthContext';
+import { usePlayer } from '../context/PlayerContext'; // <--- Add this!
+import SongCard from '../components/SongCard';
+import { HeartFilledIcon } from '../components/Icons';
 
+interface LikedSongsProps {
+  onAuthRequired: () => void;
+}
+
+export default function LikedSongs({ onAuthRequired }: LikedSongsProps) {
+  const { userProfile } = useAuth();
+  const { songs } = usePlayer(); // <--- Grab the live songs here!
+
+  const likedSongs = useMemo(() => {
+    if (!userProfile || !songs) return [];
+    return songs.filter((s) => userProfile.likedSongs.includes(s.id));
+  }, [userProfile, songs]);
+
+  // ... keep the rest of your file exactly the same!
 export const SONGS: Song[] = [
   {
     id: 1,
