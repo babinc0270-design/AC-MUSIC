@@ -93,9 +93,14 @@ export function Sidebar({ currentView, onNavigate, isAuthenticated }: SidebarPro
         </button>
       </nav>
 
-      {/* Footer */}
+      {/* Footer & Legal Disclaimer */}
       <div className="px-5 py-4 border-t border-zinc-800/40">
-        <p className="text-[10px] text-zinc-700 font-medium">AC Music © 2025</p>
+        <p className="text-[10px] text-zinc-700 font-medium mb-3">AC Music © 2025</p>
+        <p className="text-[9px] text-zinc-500 leading-tight">
+          This is a personal, non-commercial educational project built to demonstrate full-stack web development.
+          <br /><br />
+          All audio content is streamed directly via third-party APIs and is the property of their respective copyright owners.
+        </p>
       </div>
     </aside>
   );
