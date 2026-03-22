@@ -191,10 +191,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     return () => clearInterval(interval);
   }, [isPlaying, ytPlayer]);
   
-  /* ── 🎵 OS Media Session API (The Background Fix) 🎵 ── */
+  /* ── 🎵 OS Media Session API (The Windows Integration) 🎵 ── */
   useEffect(() => {
     if ('mediaSession' in navigator && currentSong) {
-      // 1. Tell the computer/phone exactly what is playing
       navigator.mediaSession.metadata = new MediaMetadata({
         title: currentSong.title,
         artist: currentSong.artist.join(', '),
@@ -204,21 +203,25 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         ],
       });
 
-      // 2. Wire your computer's media keys (Play/Pause/Next buttons on your keyboard) directly to AC Music
       navigator.mediaSession.setActionHandler('play', () => {
         if (ytPlayer) ytPlayer.playVideo();
-        setIsPlaying(true);
       });
       
       navigator.mediaSession.setActionHandler('pause', () => {
         if (ytPlayer) ytPlayer.pauseVideo();
-        setIsPlaying(false);
       });
       
-      navigator.mediaSession.setActionHandler('previoustrack', playPrevious);
-      navigator.mediaSession.setActionHandler('nexttrack', playNext);
+      navigator.mediaSession.setActionHandler('previoustrack', () => {
+        // We MUST use the ref here, or React forgets what song is playing!
+        playPrevious(); 
+      });
+      
+      navigator.mediaSession.setActionHandler('nexttrack', () => {
+        // We MUST use the ref here!
+        if (playNextRef.current) playNextRef.current();
+      });
     }
-  }, [currentSong, isPlaying, ytPlayer]);
+  }, [currentSong, ytPlayer]); // <-- Notice how short this dependency array is now!
 
  /* ── YouTube Player Events ── */
   const onPlayerReady = (event: YouTubeEvent) => {
