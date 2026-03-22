@@ -11,10 +11,9 @@ interface SearchProps {
 export default function Search({ onAuthRequired }: SearchProps) {
   const [query, setQuery] = useState('');
   
-  // 1. Grab the live database songs from the brain!
+  // Grab the live database songs!
   const { songs, loadingSongs } = usePlayer();
 
-  // 2. Search through the live database safely
   const results = useMemo<Song[]>(() => {
     const q = query.trim().toLowerCase();
     if (!q) return songs;
@@ -29,7 +28,6 @@ export default function Search({ onAuthRequired }: SearchProps) {
     });
   }, [query, songs]);
 
-  // 3. Show a sleek loading screen while Firebase connects
   if (loadingSongs) {
     return (
       <div className="px-4 md:px-8 py-24 flex items-center justify-center">
@@ -43,10 +41,8 @@ export default function Search({ onAuthRequired }: SearchProps) {
 
   return (
     <div className="px-4 md:px-8 py-6">
-      {/* Header */}
       <h1 className="text-2xl font-bold text-white mb-6">Search</h1>
 
-      {/* Search Input */}
       <div className="relative mb-8 max-w-xl">
         <span className="absolute inset-y-0 left-4 flex items-center pointer-events-none text-zinc-400">
           <SearchIcon className="w-5 h-5" />
@@ -68,7 +64,6 @@ export default function Search({ onAuthRequired }: SearchProps) {
         )}
       </div>
 
-      {/* Results count */}
       {query && (
         <p className="text-zinc-400 text-sm mb-4">
           {results.length === 0
@@ -77,7 +72,6 @@ export default function Search({ onAuthRequired }: SearchProps) {
         </p>
       )}
 
-      {/* Grid */}
       {results.length > 0 ? (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-4">
           {results.map((song) => (
