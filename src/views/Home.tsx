@@ -17,10 +17,10 @@ function getGreeting(): string {
 export function Home({ onNavigate }: HomeProps) {
   const [activeGenre, setActiveGenre] = useState<string>('All');
   
-  // 1. Grab the live database songs from the brain!
+  // 1. Grab the live database songs!
   const { songs, loadingSongs } = usePlayer(); 
 
-  // 2. Safely extract genres (handles both arrays and single strings)
+  // 2. Safely extract genres
   const genres = useMemo<string[]>(() => {
     const set = new Set<string>();
     songs.forEach((s) => {
@@ -30,7 +30,7 @@ export function Home({ onNavigate }: HomeProps) {
     return ['All', ...Array.from(set).sort()];
   }, [songs]);
 
-  // 3. Filter the live songs based on the selected genre
+  // 3. Filter the live songs
   const filteredSongs = useMemo(() => {
     if (activeGenre === 'All') return songs;
     return songs.filter((s) => {
@@ -39,7 +39,7 @@ export function Home({ onNavigate }: HomeProps) {
     });
   }, [activeGenre, songs]);
 
-  // 4. Show a sleek loading screen while Firebase connects
+  // 4. Loading screen
   if (loadingSongs) {
     return (
       <div className="min-h-full flex items-center justify-center bg-gradient-to-b from-zinc-800/60 via-zinc-950 to-black">
@@ -53,7 +53,6 @@ export function Home({ onNavigate }: HomeProps) {
 
   return (
     <div className="min-h-full bg-gradient-to-b from-zinc-800/60 via-zinc-950 to-black">
-      {/* Hero header */}
       <div className="relative px-6 pt-8 pb-6 overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-br from-emerald-900/20 via-transparent to-transparent pointer-events-none" />
         <div className="relative">
@@ -66,7 +65,6 @@ export function Home({ onNavigate }: HomeProps) {
         </div>
       </div>
 
-      {/* Genre filter pills */}
       <div className="px-6 pb-5">
         <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none">
           {genres.map((genre) => (
@@ -85,7 +83,6 @@ export function Home({ onNavigate }: HomeProps) {
         </div>
       </div>
 
-      {/* Song grid */}
       <div className="px-6 pb-8">
         <div className="flex items-baseline gap-2 mb-4">
           <h2 className="text-base font-bold text-white">
