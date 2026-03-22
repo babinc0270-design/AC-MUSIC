@@ -190,6 +190,35 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     }
     return () => clearInterval(interval);
   }, [isPlaying, ytPlayer]);
+  
+  /* ── 🎵 OS Media Session API (The Background Fix) 🎵 ── */
+  useEffect(() => {
+    if ('mediaSession' in navigator && currentSong) {
+      // 1. Tell the computer/phone exactly what is playing
+      navigator.mediaSession.metadata = new MediaMetadata({
+        title: currentSong.title,
+        artist: currentSong.artist.join(', '),
+        album: currentSong.album,
+        artwork: [
+          { src: currentSong.cover, sizes: '512x512', type: 'image/jpeg' },
+        ],
+      });
+
+      // 2. Wire your computer's media keys (Play/Pause/Next buttons on your keyboard) directly to AC Music
+      navigator.mediaSession.setActionHandler('play', () => {
+        if (ytPlayer) ytPlayer.playVideo();
+        setIsPlaying(true);
+      });
+      
+      navigator.mediaSession.setActionHandler('pause', () => {
+        if (ytPlayer) ytPlayer.pauseVideo();
+        setIsPlaying(false);
+      });
+      
+      navigator.mediaSession.setActionHandler('previoustrack', playPrevious);
+      navigator.mediaSession.setActionHandler('nexttrack', playNext);
+    }
+  }, [currentSong, isPlaying, ytPlayer]);
 
  /* ── YouTube Player Events ── */
   const onPlayerReady = (event: YouTubeEvent) => {
