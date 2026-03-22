@@ -1,8 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { usePlayer } from '../context/PlayerContext';
 import { useAuth } from '../context/AuthContext';
-import { doc, updateDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
-import { db } from '../firebase';
 import {
   PlayIcon,
   PauseIcon,
@@ -67,25 +65,18 @@ export function Player() {
     playPrevious,
   } = usePlayer();
 
+  // Grab the magic toggle function directly from your AuthContext!
   const authContext = useAuth() as any;
   const userProfile = authContext?.userProfile;
   const authUser = authContext?.user || authContext?.currentUser; 
+  const toggleLikedSong = authContext?.toggleLikedSong;
 
   const [isMuted, setIsMuted] = useState(false);
   const [prevVolume, setPrevVolume] = useState(0.8);
   const [isExpanded, setIsExpanded] = useState(false);
 
-  // NEW: Optimistic UI State for the Heart Icon
-  const [localIsLiked, setLocalIsLiked] = useState(false);
-
-  // Sync the local heart state with the database whenever the song changes
-  useEffect(() => {
-    if (currentSong && userProfile?.likedSongs) {
-      setLocalIsLiked(userProfile.likedSongs.includes(currentSong.id));
-    } else {
-      setLocalIsLiked(false);
-    }
-  }, [currentSong, userProfile]);
+  // Perfectly synced state reading directly from your profile
+  const isLiked = currentSong && userProfile?.likedSongs?.includes(currentSong.id);
 
   const handleMuteToggle = () => {
     if (isMuted) {
@@ -108,7 +99,7 @@ export function Player() {
     seek(parseFloat(e.target.value));
   };
 
-  // NEW: The Instant Heart Toggle Logic
+  // Uses YOUR app's built-in sync function
   const handleToggleLike = async (e: React.MouseEvent) => {
     e.stopPropagation(); 
     if (!authUser || !currentSong) {
@@ -116,22 +107,8 @@ export function Player() {
       return;
     }
 
-    // 1. Instantly toggle the heart on the screen (no waiting!)
-    const newLikedState = !localIsLiked;
-    setLocalIsLiked(newLikedState);
-
-    // 2. Quietly update Firebase in the background
-    const userRef = doc(db, 'users', authUser.uid);
-    try {
-      if (!newLikedState) {
-        await updateDoc(userRef, { likedSongs: arrayRemove(currentSong.id) });
-      } else {
-        await updateDoc(userRef, { likedSongs: arrayUnion(currentSong.id) });
-      }
-    } catch (error) {
-      console.error("Error updating liked status:", error);
-      // If Firebase fails, revert the heart back
-      setLocalIsLiked(!newLikedState);
+    if (toggleLikedSong) {
+      await toggleLikedSong(currentSong.id);
     }
   };
 
@@ -189,7 +166,7 @@ export function Player() {
                 onClick={handleToggleLike} 
                 className="mt-1 flex-shrink-0 hover:scale-110 active:scale-95 transition-transform"
               >
-                {localIsLiked ? (
+                {isLiked ? (
                   <HeartFilledIcon className="w-8 h-8 text-emerald-500 drop-shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
                 ) : (
                   <HeartOutlineIcon className="w-8 h-8 text-zinc-400 hover:text-white transition-colors" />
@@ -270,7 +247,7 @@ export function Player() {
                 onClick={handleToggleLike} 
                 className="mt-1 flex-shrink-0 hover:scale-110 active:scale-95 transition-transform"
               >
-                {localIsLiked ? (
+                {isLiked ? (
                   <HeartFilledIcon className="w-6 h-6 text-emerald-500 drop-shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
                 ) : (
                   <HeartOutlineIcon className="w-6 h-6 text-zinc-400 hover:text-white transition-colors" />
