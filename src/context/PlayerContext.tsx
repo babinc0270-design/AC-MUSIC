@@ -191,22 +191,35 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     return () => clearInterval(interval);
   }, [isPlaying, ytPlayer]);
 
-  /* ── YouTube Player Events ── */
+ /* ── YouTube Player Events ── */
   const onPlayerReady = (event: YouTubeEvent) => {
     setYtPlayer(event.target);
     event.target.setVolume(volume * 100);
+    // If it takes a second to load, force play immediately
+    if (isPlaying) event.target.playVideo();
   };
 
   const onPlayerStateChange = (event: YouTubeEvent) => {
-    // 1 = Playing, 2 = Paused, 0 = Ended
-    if (event.data === 1) setIsPlaying(true);
-    if (event.data === 2) setIsPlaying(false);
-    if (event.data === 0 && playNextRef.current) playNextRef.current();
+    const state = event.data;
+    // 1 = Playing, 2 = Paused, 0 = Ended, -1 = Unstarted, 3 = Buffering, 5 = Video Cued
+
+    if (state === 1) {
+      setIsPlaying(true);
+    } else if (state === 2) {
+      setIsPlaying(false);
+    } else if (state === 0) {
+      // Song ended! Trigger the next song.
+      if (playNextRef.current) playNextRef.current();
+    } else if (state === -1 || state === 5) {
+      // THE AGGRESSIVE BACKGROUND FIX 🚀
+      // If the tab is hidden, YouTube will load the next song and pause it to save data.
+      // We immediately force it to play without waiting for the user to open the tab!
+      event.target.playVideo();
+    }
   };
 
-  const onPlayerError = () => {
-    // If a music video has embedding disabled by the artist, just skip to the next hit automatically!
-    console.warn("YouTube Video Embedding Restricted - Skipping to next track");
+  const onPlayerError = (event: YouTubeEvent) => {
+    console.warn("YouTube Video Embedding Restricted - Skipping to next track", event.data);
     if (playNextRef.current) playNextRef.current();
   };
 
