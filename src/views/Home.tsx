@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { SONGS } from '../data';
+import { usePlayer } from '../context/PlayerContext';
 import { SongCard } from '../components/SongCard';
 import type { ViewType } from '../types';
 
