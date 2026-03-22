@@ -231,14 +231,14 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     >
       {children}
       
-      {/* THE SECRET WEAPON: The Hidden YouTube Engine */}
-      <div className="hidden">
+      {/* THE SECRET WEAPON: The "Off-Screen" YouTube Engine */}
+      <div className="fixed -top-[10000px] -left-[10000px] w-[1px] h-[1px] opacity-0 pointer-events-none">
         {currentSong && (
           <YouTube
             videoId={currentSong.audio} // Uses the YouTube ID saved by our Python Bot
             opts={{
-              height: '0',
-              width: '0',
+              height: '1', // Changed from 0 to 1 so the browser doesn't think it's broken
+              width: '1',  // Changed from 0 to 1
               playerVars: {
                 autoplay: 1,
                 controls: 0,
