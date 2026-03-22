@@ -1,6 +1,6 @@
-import { useState, useMemo } from 'react';
-import { SONGS } from '../data';
-import { Song } from '../types';
+import React, { useState, useMemo } from 'react';
+import { usePlayer } from '../context/PlayerContext';
+import type { Song } from '../types';
 import { SongCard } from '../components/SongCard';
 import { SearchIcon } from '../components/Icons';
 
@@ -10,18 +10,36 @@ interface SearchProps {
 
 export default function Search({ onAuthRequired }: SearchProps) {
   const [query, setQuery] = useState('');
+  
+  // 1. Grab the live database songs from the brain!
+  const { songs, loadingSongs } = usePlayer();
 
+  // 2. Search through the live database safely
   const results = useMemo<Song[]>(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return SONGS;
-    return SONGS.filter(
-      (s) =>
+    if (!q) return songs;
+    return songs.filter((s) => {
+      const genreList = Array.isArray(s.genre) ? s.genre : [s.genre];
+      return (
         s.title.toLowerCase().includes(q) ||
         s.album.toLowerCase().includes(q) ||
         s.artist.some((a) => a.toLowerCase().includes(q)) ||
-        s.genre.some((g) => g.toLowerCase().includes(q))
+        genreList.some((g) => g.toLowerCase().includes(q))
+      );
+    });
+  }, [query, songs]);
+
+  // 3. Show a sleek loading screen while Firebase connects
+  if (loadingSongs) {
+    return (
+      <div className="px-4 md:px-8 py-24 flex items-center justify-center">
+        <div className="text-zinc-400 text-lg font-medium flex items-center gap-3">
+          <div className="w-5 h-5 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
+          Searching Database... 🎧
+        </div>
+      </div>
     );
-  }, [query]);
+  }
 
   return (
     <div className="px-4 md:px-8 py-6">
