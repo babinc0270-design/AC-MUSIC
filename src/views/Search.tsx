@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import { usePlayer } from '../context/PlayerContext';
 import type { Song } from '../types';
 import { SongCard } from '../components/SongCard';
