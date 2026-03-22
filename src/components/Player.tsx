@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { usePlayer } from '../context/PlayerContext';
 import { useAuth } from '../context/AuthContext';
 import { doc, updateDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
@@ -32,7 +32,7 @@ const CloseIcon = ({ className }: { className?: string }) => (
   </svg>
 );
 
-// NEW: Heart Icons built right in!
+// Heart Icons
 const HeartOutlineIcon = ({ className }: { className?: string }) => (
   <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
@@ -67,7 +67,6 @@ export function Player() {
     playPrevious,
   } = usePlayer();
 
-  // Bring in the Auth Context safely
   const authContext = useAuth() as any;
   const userProfile = authContext?.userProfile;
   const authUser = authContext?.user || authContext?.currentUser; 
@@ -76,8 +75,17 @@ export function Player() {
   const [prevVolume, setPrevVolume] = useState(0.8);
   const [isExpanded, setIsExpanded] = useState(false);
 
-  // Check if current song is liked
-  const isLiked = currentSong && userProfile?.likedSongs?.includes(currentSong.id);
+  // NEW: Optimistic UI State for the Heart Icon
+  const [localIsLiked, setLocalIsLiked] = useState(false);
+
+  // Sync the local heart state with the database whenever the song changes
+  useEffect(() => {
+    if (currentSong && userProfile?.likedSongs) {
+      setLocalIsLiked(userProfile.likedSongs.includes(currentSong.id));
+    } else {
+      setLocalIsLiked(false);
+    }
+  }, [currentSong, userProfile]);
 
   const handleMuteToggle = () => {
     if (isMuted) {
@@ -100,27 +108,30 @@ export function Player() {
     seek(parseFloat(e.target.value));
   };
 
-  // Firebase Like Toggle Logic
+  // NEW: The Instant Heart Toggle Logic
   const handleToggleLike = async (e: React.MouseEvent) => {
-    e.stopPropagation(); // Prevents clicks from triggering other elements
+    e.stopPropagation(); 
     if (!authUser || !currentSong) {
       alert("Please sign in to like songs!");
       return;
     }
 
+    // 1. Instantly toggle the heart on the screen (no waiting!)
+    const newLikedState = !localIsLiked;
+    setLocalIsLiked(newLikedState);
+
+    // 2. Quietly update Firebase in the background
     const userRef = doc(db, 'users', authUser.uid);
     try {
-      if (isLiked) {
-        await updateDoc(userRef, {
-          likedSongs: arrayRemove(currentSong.id)
-        });
+      if (!newLikedState) {
+        await updateDoc(userRef, { likedSongs: arrayRemove(currentSong.id) });
       } else {
-        await updateDoc(userRef, {
-          likedSongs: arrayUnion(currentSong.id)
-        });
+        await updateDoc(userRef, { likedSongs: arrayUnion(currentSong.id) });
       }
     } catch (error) {
       console.error("Error updating liked status:", error);
+      // If Firebase fails, revert the heart back
+      setLocalIsLiked(!newLikedState);
     }
   };
 
@@ -178,7 +189,7 @@ export function Player() {
                 onClick={handleToggleLike} 
                 className="mt-1 flex-shrink-0 hover:scale-110 active:scale-95 transition-transform"
               >
-                {isLiked ? (
+                {localIsLiked ? (
                   <HeartFilledIcon className="w-8 h-8 text-emerald-500 drop-shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
                 ) : (
                   <HeartOutlineIcon className="w-8 h-8 text-zinc-400 hover:text-white transition-colors" />
@@ -259,7 +270,7 @@ export function Player() {
                 onClick={handleToggleLike} 
                 className="mt-1 flex-shrink-0 hover:scale-110 active:scale-95 transition-transform"
               >
-                {isLiked ? (
+                {localIsLiked ? (
                   <HeartFilledIcon className="w-6 h-6 text-emerald-500 drop-shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
                 ) : (
                   <HeartOutlineIcon className="w-6 h-6 text-zinc-400 hover:text-white transition-colors" />
