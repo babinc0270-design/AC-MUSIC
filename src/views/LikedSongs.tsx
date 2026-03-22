@@ -1,8 +1,7 @@
-import { useMemo } from 'react';
-// Delete the "import { SONGS } from '../data'" line entirely!
+import React, { useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { usePlayer } from '../context/PlayerContext'; // <--- Add this!
-import SongCard from '../components/SongCard';
+import { usePlayer } from '../context/PlayerContext';
+import { SongCard } from '../components/SongCard';
 import { HeartFilledIcon } from '../components/Icons';
 
 interface LikedSongsProps {
@@ -11,38 +10,23 @@ interface LikedSongsProps {
 
 export default function LikedSongs({ onAuthRequired }: LikedSongsProps) {
   const { userProfile } = useAuth();
-  const { songs } = usePlayer(); // <--- Grab the live songs here!
+  
+  // 1. Grab the live database songs from the brain
+  const { songs, loadingSongs } = usePlayer();
 
+  // 2. Filter the live songs based on what the user liked
   const likedSongs = useMemo(() => {
     if (!userProfile || !songs) return [];
     return songs.filter((s) => userProfile.likedSongs.includes(s.id));
   }, [userProfile, songs]);
 
-  // ... keep the rest of your file exactly the same!
-  if (!userProfile) {
+  // 3. Loading screen
+  if (loadingSongs) {
     return (
-      <div className="flex flex-col items-center justify-center h-[60vh] gap-4 text-zinc-500 px-6 text-center">
-        <HeartFilledIcon className="w-16 h-16 text-zinc-700" />
-        <p className="text-xl font-semibold text-zinc-300">Sign in to see your liked songs</p>
-        <p className="text-sm">All the songs you heart will appear here.</p>
-        <button
-          onClick={onAuthRequired}
-          className="mt-2 px-6 py-2.5 bg-emerald-500 hover:bg-emerald-400 text-black font-semibold rounded-full text-sm transition"
-        >
-          Sign In
-        </button>
-      </div>
-    );
-  }
-
-  if (likedSongs.length === 0) {
-    return (
-      <div className="px-4 md:px-8 py-6">
-        <h1 className="text-2xl font-bold text-white mb-8">Liked Songs</h1>
-        <div className="flex flex-col items-center justify-center py-24 gap-4 text-zinc-500">
-          <HeartFilledIcon className="w-14 h-14 text-zinc-700" />
-          <p className="text-lg font-medium text-zinc-400">No liked songs yet</p>
-          <p className="text-sm">Heart songs from the home or search page to save them here.</p>
+      <div className="px-4 md:px-8 py-24 flex items-center justify-center">
+        <div className="text-zinc-400 text-lg font-medium flex items-center gap-3">
+          <div className="w-5 h-5 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
+          Loading Liked Songs... 🎧
         </div>
       </div>
     );
@@ -50,25 +34,24 @@ export default function LikedSongs({ onAuthRequired }: LikedSongsProps) {
 
   return (
     <div className="px-4 md:px-8 py-6">
-      {/* Header */}
       <div className="flex items-center gap-3 mb-8">
-        <div className="w-10 h-10 bg-gradient-to-br from-emerald-500 to-emerald-700 rounded-lg flex items-center justify-center">
-          <HeartFilledIcon className="w-5 h-5 text-white" />
+        <div className="w-12 h-12 rounded-full bg-emerald-500/20 flex items-center justify-center text-emerald-500">
+          <HeartFilledIcon className="w-6 h-6" />
         </div>
-        <div>
-          <h1 className="text-2xl font-bold text-white leading-tight">Liked Songs</h1>
-          <p className="text-sm text-zinc-400">
-            {likedSongs.length} song{likedSongs.length !== 1 ? 's' : ''}
-          </p>
-        </div>
+        <h1 className="text-2xl font-bold text-white">Liked Songs</h1>
       </div>
 
-      {/* Grid */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-4">
-        {likedSongs.map((song) => (
-          <SongCard key={song.id} song={song} onAuthRequired={onAuthRequired} />
-        ))}
-      </div>
+      {likedSongs.length > 0 ? (
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-4">
+          {likedSongs.map((song) => (
+            <SongCard key={song.id} song={song} onAuthRequired={onAuthRequired} />
+          ))}
+        </div>
+      ) : (
+        <div className="text-center py-20">
+          <p className="text-zinc-500 font-medium">No liked songs yet.</p>
+        </div>
+      )}
     </div>
   );
 }
