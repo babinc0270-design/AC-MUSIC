@@ -20,6 +20,8 @@ interface PlayerContextValue {
   currentTime: number;
   duration: number;
   volume: number;
+  sleepTimer: number | 'track' | null;
+  setSleepTimerAction: (option: number | 'track' | null) => void;
   playSong: (song: Song) => void;
   togglePlay: () => void;
   seek: (pct: number) => void;
@@ -40,9 +42,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const [songs, setSongs] = useState<Song[]>([]);
   const [loadingSongs, setLoadingSongs] = useState(true);
 
-  // NEW: YouTube Player State
+  // YouTube Player State
   const [ytPlayer, setYtPlayer] = useState<YouTubePlayer | null>(null);
-
   const [currentSong, setCurrentSong] = useState<Song | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -50,10 +51,37 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const [duration, setDuration] = useState(0);
   const [volume, setVolumeState] = useState(0.8);
 
+  /* ── Sleep Timer State & Refs ── */
+  const [sleepTimer, setSleepTimer] = useState<number | 'track' | null>(null);
+  const sleepTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const stopAfterTrackRef = useRef<boolean>(false);
+
   const historyRef = useRef<Song[]>([]);
   const currentSongRef = useRef<Song | null>(null);
   const playNextRef = useRef<() => void>();
   const songsRef = useRef<Song[]>([]);
+
+  /* ── Sleep Timer Logic ── */
+  const setSleepTimerAction = (option: number | 'track' | null) => {
+    // 1. Clear any existing timers first
+    if (sleepTimeoutRef.current) {
+      clearTimeout(sleepTimeoutRef.current);
+      sleepTimeoutRef.current = null;
+    }
+    stopAfterTrackRef.current = false;
+    setSleepTimer(option);
+
+    // 2. Set the new timer
+    if (typeof option === 'number') {
+      sleepTimeoutRef.current = setTimeout(() => {
+        if (ytPlayer) ytPlayer.pauseVideo();
+        setIsPlaying(false);
+        setSleepTimer(null);
+      }, option * 60 * 1000);
+    } else if (option === 'track') {
+      stopAfterTrackRef.current = true;
+    }
+  };
 
   /* ── 1. Fetch Live Database ── */
   useEffect(() => {
@@ -137,13 +165,15 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     setProgress(0);
     setCurrentTime(0);
     setDuration(0);
-    setIsPlaying(true); // Triggers the YouTube component to auto-play when ready
+    setIsPlaying(true);
+    // Triggers the YouTube component to auto-play when ready
   };
 
   const playSong = (song: Song): void => internalPlaySong(song, false);
 
   const togglePlay = (): void => {
     if (!ytPlayer || !currentSong) return;
+
     if (isPlaying) {
       ytPlayer.pauseVideo();
       setIsPlaying(false);
@@ -170,7 +200,6 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   };
 
   /* ── YouTube Timer Sync ── */
-  // YouTube doesn't have a built-in time tracker event, so we create our own clock!
   useEffect(() => {
     let interval: NodeJS.Timeout;
     if (isPlaying && ytPlayer) {
@@ -190,7 +219,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     }
     return () => clearInterval(interval);
   }, [isPlaying, ytPlayer]);
-  
+
   /* ── 🎵 OS Media Session API (The Windows Integration) 🎵 ── */
   useEffect(() => {
     if ('mediaSession' in navigator && currentSong) {
@@ -212,18 +241,16 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       });
       
       navigator.mediaSession.setActionHandler('previoustrack', () => {
-        // We MUST use the ref here, or React forgets what song is playing!
         playPrevious(); 
       });
       
       navigator.mediaSession.setActionHandler('nexttrack', () => {
-        // We MUST use the ref here!
         if (playNextRef.current) playNextRef.current();
       });
     }
-  }, [currentSong, ytPlayer]); // <-- Notice how short this dependency array is now!
+  }, [currentSong, ytPlayer]); 
 
- /* ── YouTube Player Events ── */
+  /* ── YouTube Player Events ── */
   const onPlayerReady = (event: YouTubeEvent) => {
     setYtPlayer(event.target);
     event.target.setVolume(volume * 100);
@@ -240,12 +267,17 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     } else if (state === 2) {
       setIsPlaying(false);
     } else if (state === 0) {
-      // Song ended! Trigger the next song.
-      if (playNextRef.current) playNextRef.current();
+      // Song ended! Check Sleep Timer first
+      if (stopAfterTrackRef.current) {
+        setIsPlaying(false);
+        setSleepTimer(null);
+        stopAfterTrackRef.current = false;
+      } else {
+        // Normal behavior: Trigger the next song.
+        if (playNextRef.current) playNextRef.current();
+      }
     } else if (state === -1 || state === 5) {
       // THE AGGRESSIVE BACKGROUND FIX 🚀
-      // If the tab is hidden, YouTube will load the next song and pause it to save data.
-      // We immediately force it to play without waiting for the user to open the tab!
       event.target.playVideo();
     }
   };
@@ -266,6 +298,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         currentTime,
         duration,
         volume,
+        sleepTimer,
+        setSleepTimerAction,
         playSong,
         togglePlay,
         seek,
@@ -282,7 +316,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
           <YouTube
             videoId={currentSong.audio} // Uses the YouTube ID
             opts={{
-              height: '10', // Needs to be larger than 0 so the browser respects it
+              height: '10', 
               width: '10',
               playerVars: {
                 autoplay: 1,
