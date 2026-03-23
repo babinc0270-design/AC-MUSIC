@@ -1,5 +1,5 @@
 import React from 'react';
-import { HomeIcon, SearchIcon, HeartIcon, UserIcon } from './Icons';
+import { HomeIcon, SearchIcon, LibraryIcon, UserIcon } from './Icons'; // UPDATED: Imported LibraryIcon
 import type { ViewType } from '../types';
 
 interface MobileNavProps {
@@ -16,7 +16,7 @@ const navItems: {
 }[] = [
   { view: 'home', label: 'Home', Icon: HomeIcon },
   { view: 'search', label: 'Search', Icon: SearchIcon },
-  { view: 'liked', label: 'Liked', Icon: HeartIcon, authRequired: true },
+  { view: 'liked', label: 'Your Library', Icon: LibraryIcon, authRequired: true }, // UPDATED: Icon and Label
   { view: 'profile', label: 'Profile', Icon: UserIcon },
 ];
 
