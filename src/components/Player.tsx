@@ -14,8 +14,8 @@ import {
   RepeatIcon,
   RepeatOneIcon,
   ShuffleIcon,
-  MoreHorizontalIcon, // ADDED
-  PlusIcon,           // ADDED
+  MoreHorizontalIcon,
+  PlusIcon,
 } from './Icons';
 
 // ── CUSTOM ICONS ──
@@ -37,7 +37,6 @@ const CloseIcon = ({ className }: { className?: string }) => (
   </svg>
 );
 
-// Heart Icons
 const HeartOutlineIcon = ({ className }: { className?: string }) => (
   <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
@@ -89,16 +88,22 @@ export function Player() {
   const [prevVolume, setPrevVolume] = useState(0.8);
   const [isExpanded, setIsExpanded] = useState(false);
   
-  // ── NEW: Multi-step Options Menu State ──
   const [showOptionsMenu, setShowOptionsMenu] = useState(false);
   const [menuView, setMenuView] = useState<'main' | 'timer' | 'playlists'>('main');
   const [userPlaylists, setUserPlaylists] = useState<any[]>([]);
   const [newPlaylistName, setNewPlaylistName] = useState('');
   const [isFetchingPlaylists, setIsFetchingPlaylists] = useState(false);
 
+  // ── CUSTOM TOAST STATE ──
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  const showToast = (message: string) => {
+    setToastMessage(message);
+    setTimeout(() => setToastMessage(null), 3000); // Disappears after 3 seconds
+  };
+
   const isLiked = currentSong && userProfile?.likedSongs?.includes(currentSong.id);
 
-  // Fetch playlists when menu opens to 'playlists' view
   useEffect(() => {
     if (menuView === 'playlists' && authUser) {
       const fetchPlaylists = async () => {
@@ -123,16 +128,16 @@ export function Player() {
       const newPl = {
         name: newPlaylistName,
         userId: authUser.uid,
-        songs: [currentSong.id], // Add current song immediately
+        songs: [currentSong.id], 
         createdAt: new Date()
       };
       await addDoc(collection(db, 'playlists'), newPl);
       setNewPlaylistName('');
       setShowOptionsMenu(false);
-      alert('Playlist created & song added!');
+      showToast('Playlist created & song added!'); 
     } catch (error) {
       console.error("Error creating playlist:", error);
-      alert("Failed to create playlist.");
+      showToast("Failed to create playlist."); 
     }
   };
 
@@ -144,7 +149,7 @@ export function Player() {
         songs: arrayUnion(currentSong.id)
       });
       setShowOptionsMenu(false);
-      alert('Added to playlist!');
+      showToast('Added to playlist!'); 
     } catch (error) {
       console.error("Error updating playlist:", error);
     }
@@ -184,17 +189,14 @@ export function Player() {
   const handleToggleLike = async (e: React.MouseEvent) => {
     e.stopPropagation();
     if (!authUser || !currentSong) {
-      alert("Please sign in to like songs!");
+      showToast("Please sign in to like songs!"); 
       return;
     }
     if (toggleLikedSong) await toggleLikedSong(currentSong.id);
   };
 
-  // ── DYNAMIC OPTIONS DROPDOWN ──
   const renderOptionsMenu = (position: 'top' | 'bottom') => (
     <div className={`absolute ${position === 'bottom' ? 'bottom-full mb-4' : 'top-full mt-2'} right-0 w-56 bg-zinc-900 border border-zinc-800 rounded-xl shadow-2xl overflow-hidden z-[70] flex flex-col`}>
-      
-      {/* HEADER WITH BACK BUTTON */}
       <div className="p-3 border-b border-zinc-800 flex items-center">
         {menuView !== 'main' && (
           <button onClick={() => setMenuView('main')} className="mr-2 text-zinc-400 hover:text-white">
@@ -206,10 +208,7 @@ export function Player() {
         </p>
       </div>
 
-      {/* CONTENT */}
       <div className="flex flex-col py-1 max-h-64 overflow-y-auto">
-        
-        {/* VIEW: MAIN */}
         {menuView === 'main' && (
           <>
             <button
@@ -222,7 +221,7 @@ export function Player() {
             <button
               onClick={() => {
                 if (!authUser) {
-                  alert("Sign in to create playlists!");
+                  showToast("Sign in to create playlists!"); 
                   setShowOptionsMenu(false);
                   return;
                 }
@@ -235,7 +234,6 @@ export function Player() {
           </>
         )}
 
-        {/* VIEW: SLEEP TIMER */}
         {menuView === 'timer' && (
           [
             { label: 'Off', value: null },
@@ -261,7 +259,6 @@ export function Player() {
           ))
         )}
 
-        {/* VIEW: PLAYLISTS */}
         {menuView === 'playlists' && (
           <div className="p-2 flex flex-col gap-1">
             <div className="flex items-center gap-2 px-2 pb-2 border-b border-zinc-800 mb-1">
@@ -315,17 +312,22 @@ export function Player() {
 
   return (
     <>
+      {/* ── CUSTOM TOAST NOTIFICATION ── */}
+      {toastMessage && (
+        <div className="fixed bottom-[100px] md:bottom-24 left-1/2 -translate-x-1/2 bg-zinc-800 text-white px-5 py-3 rounded-full shadow-2xl border border-zinc-700/50 z-[100] text-sm font-semibold flex items-center gap-3 transition-all animate-bounce">
+          <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)]"></div>
+          {toastMessage}
+        </div>
+      )}
+
       {isExpanded && (
         <>
-          {/* 1. MOBILE FULL SCREEN OVERLAY */}
           <div className="md:hidden fixed inset-0 z-[60] bg-zinc-950 flex flex-col pt-12 pb-8 px-6">
             <div className="flex items-center justify-between mb-8">
               <button onClick={() => setIsExpanded(false)} className="p-2 -ml-2 text-zinc-400 hover:text-white transition">
                 <ChevronDownIcon className="w-6 h-6" />
               </button>
               <span className="text-xs font-bold tracking-widest text-zinc-400 uppercase">Now Playing</span>
-              
-              {/* MOBILE 3 DOTS MENU */}
               <div className="relative flex items-center">
                 <button 
                   onClick={() => {
@@ -389,7 +391,6 @@ export function Player() {
             </div>
           </div>
 
-          {/* 2. DESKTOP RIGHT SIDEBAR */}
           <div className="hidden md:flex fixed right-0 top-0 bottom-[72px] w-80 bg-zinc-900 border-l border-zinc-800/40 z-30 flex-col p-6 shadow-2xl overflow-y-auto">
             <div className="flex items-center justify-between mb-6">
               <h3 className="font-bold text-white">Now Playing</h3>
@@ -420,7 +421,6 @@ export function Player() {
         </>
       )}
 
-      {/* ── STANDARD BOTTOM BAR ── */}
       <div className={`fixed bottom-16 md:bottom-0 left-0 right-0 md:left-60 bg-zinc-900/95 backdrop-blur-xl border-t border-zinc-800/40 z-40 ${isExpanded ? 'hidden md:block' : 'block'}`}>
         <div className="relative h-1 group cursor-pointer">
           <div className="absolute inset-0 bg-zinc-700/60" />
@@ -464,7 +464,6 @@ export function Player() {
               <span>{formatTime(duration)}</span>
             </div>
 
-            {/* DESKTOP 3 DOTS MENU */}
             <div className="relative flex items-center">
               <button 
                 onClick={() => {
