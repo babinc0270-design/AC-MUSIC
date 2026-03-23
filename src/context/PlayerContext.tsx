@@ -21,6 +21,8 @@ interface PlayerContextValue {
   duration: number;
   volume: number;
   sleepTimer: number | 'track' | null;
+  repeatMode: number; // ADDED: 0 = off, 1 = once, 2 = forever
+  isShuffle: boolean; // ADDED: true = random songs
   setSleepTimerAction: (option: number | 'track' | null) => void;
   playSong: (song: Song) => void;
   togglePlay: () => void;
@@ -28,6 +30,8 @@ interface PlayerContextValue {
   setVolume: (v: number) => void;
   playNext: () => void;
   playPrevious: () => void;
+  setRepeatMode: (mode: number) => void; // ADDED
+  setIsShuffle: (shuffle: boolean) => void; // ADDED
 }
 
 const PlayerContext = createContext<PlayerContextValue | null>(null);
@@ -55,6 +59,30 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const [sleepTimer, setSleepTimer] = useState<number | 'track' | null>(null);
   const sleepTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const stopAfterTrackRef = useRef<boolean>(false);
+
+  /* ── ADDED: Loop & Shuffle State & Refs ── */
+  // We use refs here so the YouTube 'onEnded' event always sees the latest changes!
+  const [repeatMode, setRepeatModeState] = useState(0);
+  const repeatModeRef = useRef(0);
+  const setRepeatMode = (mode: number) => {
+    setRepeatModeState(mode);
+    repeatModeRef.current = mode;
+  };
+
+  const [isShuffle, setIsShuffleState] = useState(false);
+  const isShuffleRef = useRef(false);
+  const setIsShuffle = (val: boolean) => {
+    setIsShuffleState(val);
+    isShuffleRef.current = val;
+  };
+
+  const [hasRepeatedOnce, setHasRepeatedOnceState] = useState(false);
+  const hasRepeatedOnceRef = useRef(false);
+  const setHasRepeatedOnce = (val: boolean) => {
+    setHasRepeatedOnceState(val);
+    hasRepeatedOnceRef.current = val;
+  };
+  /* ──────────────────────────────────────── */
 
   const historyRef = useRef<Song[]>([]);
   const currentSongRef = useRef<Song | null>(null);
@@ -106,22 +134,34 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   /* ── Auto-Play Logic ── */
   const playNext = () => {
+    // ADDED: Always reset Loop Once tracker when moving to a new song
+    setHasRepeatedOnce(false); 
+
     const current = currentSongRef.current;
     const allSongs = songsRef.current;
     if (!current || allSongs.length === 0) return;
 
-    let candidates = allSongs.filter(
-      (s) => s.id !== current.id && s.artist.some((a) => current.artist.includes(a))
-    );
+    let candidates: Song[] = [];
 
-    if (candidates.length === 0) {
-      candidates = allSongs.filter(
-        (s) => s.id !== current.id && (s as any).genre === (current as any).genre
-      );
-    }
-
-    if (candidates.length === 0) {
+    // ADDED: Shuffle Logic
+    if (isShuffleRef.current) {
+      // Pick any song that isn't the current one
       candidates = allSongs.filter((s) => s.id !== current.id);
+    } else {
+      // Normal Logic (Artist -> Genre -> Random)
+      candidates = allSongs.filter(
+        (s) => s.id !== current.id && s.artist.some((a) => current.artist.includes(a))
+      );
+
+      if (candidates.length === 0) {
+        candidates = allSongs.filter(
+          (s) => s.id !== current.id && (s as any).genre === (current as any).genre
+        );
+      }
+
+      if (candidates.length === 0) {
+        candidates = allSongs.filter((s) => s.id !== current.id);
+      }
     }
 
     if (candidates.length > 0) {
@@ -273,8 +313,26 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         setSleepTimer(null);
         stopAfterTrackRef.current = false;
       } else {
-        // Normal behavior: Trigger the next song.
-        if (playNextRef.current) playNextRef.current();
+        // ADDED: Loop Logic
+        if (repeatModeRef.current === 2) {
+          // Loop Forever: Seek to 0 and play again
+          event.target.seekTo(0, true);
+          event.target.playVideo();
+        } else if (repeatModeRef.current === 1) {
+          // Loop Once: Check if we already repeated
+          if (!hasRepeatedOnceRef.current) {
+            setHasRepeatedOnce(true);
+            event.target.seekTo(0, true);
+            event.target.playVideo();
+          } else {
+            // Already played twice, move to next song
+            setHasRepeatedOnce(false);
+            if (playNextRef.current) playNextRef.current();
+          }
+        } else {
+          // Normal behavior: Trigger the next song.
+          if (playNextRef.current) playNextRef.current();
+        }
       }
     } else if (state === -1 || state === 5) {
       // THE AGGRESSIVE BACKGROUND FIX 🚀
@@ -299,6 +357,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         duration,
         volume,
         sleepTimer,
+        repeatMode, // ADDED
+        isShuffle,  // ADDED
         setSleepTimerAction,
         playSong,
         togglePlay,
@@ -306,6 +366,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         setVolume,
         playNext,
         playPrevious,
+        setRepeatMode, // ADDED
+        setIsShuffle,  // ADDED
       }}
     >
       {children}
