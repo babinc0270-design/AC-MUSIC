@@ -273,3 +273,24 @@ export const ShuffleIcon = ({ className = 'w-5 h-5' }: { className?: string }) =
     <line x1="4" y1="4" x2="9" y2="9"/>
   </svg>
 );
+export const MoreHorizontalIcon = ({ className = 'w-5 h-5' }: { className?: string }) => (
+  <svg className={className} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+    <circle cx="5" cy="12" r="2" fill="currentColor" stroke="none"/>
+    <circle cx="12" cy="12" r="2" fill="currentColor" stroke="none"/>
+    <circle cx="19" cy="12" r="2" fill="currentColor" stroke="none"/>
+  </svg>
+);
+
+export const LibraryIcon = ({ className = 'w-5 h-5' }: { className?: string }) => (
+  <svg className={className} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
+    <path d="M4 19V5a2 2 0 0 1 2-2h13.4a.5.5 0 0 1 .49.59l-2.77 15.2a.5.5 0 0 1-.49.41H6a2 2 0 0 1-2-2Z"/>
+    <path d="M8 3v16"/>
+  </svg>
+);
+
+export const PlusIcon = ({ className = 'w-5 h-5' }: { className?: string }) => (
+  <svg className={className} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
+    <line x1="12" y1="5" x2="12" y2="19"/>
+    <line x1="5" y1="12" x2="19" y2="12"/>
+  </svg>
+);
