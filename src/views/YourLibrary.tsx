@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../firebase';
 import { useAuth } from '../context/AuthContext';
-import { HeartFilledIcon, MusicNoteIcon } from './Icons';
+import { HeartFilledIcon, MusicNoteIcon } from '../components/Icons';
 
 // Note: You will need to route your old "Liked" button in your Navbar to point to this component instead!
 export function YourLibrary() {
