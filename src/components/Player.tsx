@@ -10,6 +10,9 @@ import {
   VolumeMuteIcon,
   MusicNoteIcon,
   MoonIcon,
+  RepeatIcon,    // ADDED: Loop Icon
+  RepeatOneIcon, // ADDED: Loop One Icon
+  ShuffleIcon,   // ADDED: Shuffle Icon
 } from './Icons';
 
 // ── CUSTOM ICONS ──
@@ -52,6 +55,8 @@ function formatTime(s: number): string {
 }
 
 export function Player() {
+  // ADDED: Using a fallback extraction method so it doesn't crash if context isn't fully updated yet
+  const playerContext = usePlayer() as any;
   const {
     currentSong,
     isPlaying,
@@ -66,12 +71,18 @@ export function Player() {
     setVolume,
     playNext,
     playPrevious,
-  } = usePlayer();
+  } = playerContext;
 
   const authContext = useAuth() as any;
   const userProfile = authContext?.userProfile;
   const authUser = authContext?.user || authContext?.currentUser; 
   const toggleLikedSong = authContext?.toggleLikedSong;
+
+  // ADDED: Loop and Shuffle States
+  const repeatMode = playerContext.repeatMode || 0; 
+  const setRepeatMode = playerContext.setRepeatMode;
+  const isShuffle = playerContext.isShuffle || false;
+  const setIsShuffle = playerContext.setIsShuffle;
 
   const [isMuted, setIsMuted] = useState(false);
   const [prevVolume, setPrevVolume] = useState(0.8);
@@ -79,6 +90,21 @@ export function Player() {
   const [showTimerMenu, setShowTimerMenu] = useState(false);
 
   const isLiked = currentSong && userProfile?.likedSongs?.includes(currentSong.id);
+
+  // ADDED: Handlers for Loop and Shuffle
+  const handleToggleRepeat = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (setRepeatMode) {
+      setRepeatMode(repeatMode === 0 ? 1 : repeatMode === 1 ? 2 : 0);
+    }
+  };
+
+  const handleToggleShuffle = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (setIsShuffle) {
+      setIsShuffle(!isShuffle);
+    }
+  };
 
   const handleMuteToggle = () => {
     if (isMuted) {
@@ -242,19 +268,31 @@ export function Player() {
               </div>
             </div>
 
-            {/* Big Mobile Controls */}
-            <div className="flex items-center justify-center gap-8 mb-4">
+            {/* ADDED: Big Mobile Controls with Loop and Shuffle injected */}
+            <div className="flex items-center justify-between px-2 gap-4 mb-4">
+              {/* Loop Button */}
+              <button onClick={handleToggleRepeat} className={`transition p-2 ${repeatMode > 0 ? 'text-emerald-500' : 'text-zinc-400 hover:text-white'}`}>
+                {repeatMode === 1 ? <RepeatOneIcon className="w-6 h-6" /> : <RepeatIcon className="w-6 h-6" />}
+              </button>
+
               <button onClick={playPrevious} className="text-zinc-400 hover:text-white transition">
                 <SkipPrevIcon className="w-8 h-8" />
               </button>
+
               <button
                 onClick={togglePlay}
                 className="w-16 h-16 rounded-full bg-emerald-500 text-black flex items-center justify-center hover:scale-105 active:scale-95 transition shadow-lg shadow-emerald-500/30"
               >
                 {isPlaying ? <PauseIcon className="w-8 h-8" /> : <PlayIcon className="w-8 h-8 ml-1" />}
               </button>
+
               <button onClick={playNext} className="text-zinc-400 hover:text-white transition">
                 <SkipNextIcon className="w-8 h-8" />
+              </button>
+
+              {/* Shuffle Button */}
+              <button onClick={handleToggleShuffle} className={`transition p-2 ${isShuffle ? 'text-emerald-500' : 'text-zinc-400 hover:text-white'}`}>
+                <ShuffleIcon className="w-6 h-6" />
               </button>
             </div>
           </div>
@@ -363,7 +401,12 @@ export function Player() {
             <ExpandIcon className="w-4 h-4 text-zinc-500 opacity-0 group-hover:opacity-100 transition-opacity hidden md:block ml-2" />
           </div>
 
-          <div className="flex items-center gap-2">
+          {/* ADDED: Desktop Controls with Loop and Shuffle injected */}
+          <div className="flex items-center gap-3">
+            <button onClick={handleToggleRepeat} className={`hidden md:flex transition ${repeatMode > 0 ? 'text-emerald-500' : 'text-zinc-500 hover:text-white'}`}>
+              {repeatMode === 1 ? <RepeatOneIcon className="w-5 h-5" /> : <RepeatIcon className="w-5 h-5" />}
+            </button>
+
             <button className="hidden md:flex text-zinc-500 hover:text-white transition-colors" onClick={playPrevious}>
               <SkipPrevIcon className="w-5 h-5" />
             </button>
@@ -375,6 +418,10 @@ export function Player() {
             </button>
             <button className="hidden md:flex text-zinc-500 hover:text-white transition-colors" onClick={playNext}>
               <SkipNextIcon className="w-5 h-5" />
+            </button>
+
+            <button onClick={handleToggleShuffle} className={`hidden md:flex transition ${isShuffle ? 'text-emerald-500' : 'text-zinc-500 hover:text-white'}`}>
+              <ShuffleIcon className="w-5 h-5" />
             </button>
           </div>
 
