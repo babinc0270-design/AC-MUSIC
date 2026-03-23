@@ -6,11 +6,13 @@ import { MobileNav } from './components/MobileNav';
 import { Player } from './components/Player';
 import { Home } from './views/Home';
 import Search from './views/Search';
-import LikedSongs from './views/LikedSongs';
 import Auth from './views/Auth';
 import Profile from './views/Profile';
 import { ViewType } from './types';
 import { useAuth } from './context/AuthContext';
+
+// ADDED: Import your brand new Library component!
+import { YourLibrary } from './components/YourLibrary'; 
 
 function AppShell() {
   const { user, loading } = useAuth(); // <--- Make sure "user" is inside these curly braces
@@ -25,7 +27,8 @@ function AppShell() {
       case 'search':
         return <Search onAuthRequired={() => navigate('auth')} />;
       case 'liked':
-        return <LikedSongs onAuthRequired={() => navigate('auth')} />;
+        // UPDATED: Now renders the new YourLibrary screen!
+        return <YourLibrary />; 
       case 'auth':
         return <Auth onSuccess={() => navigate('home')} />;
       case 'profile':
