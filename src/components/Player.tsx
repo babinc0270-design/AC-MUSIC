@@ -1,6 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { usePlayer } from '../context/PlayerContext';
 import { useAuth } from '../context/AuthContext';
+import { collection, query, where, getDocs, addDoc, doc, updateDoc, arrayUnion } from 'firebase/firestore';
+import { db } from '../firebase';
 import {
   PlayIcon,
   PauseIcon,
@@ -9,10 +11,11 @@ import {
   VolumeHighIcon,
   VolumeMuteIcon,
   MusicNoteIcon,
-  MoonIcon,
-  RepeatIcon,    // ADDED: Loop Icon
-  RepeatOneIcon, // ADDED: Loop One Icon
-  ShuffleIcon,   // ADDED: Shuffle Icon
+  RepeatIcon,
+  RepeatOneIcon,
+  ShuffleIcon,
+  MoreHorizontalIcon, // ADDED
+  PlusIcon,           // ADDED
 } from './Icons';
 
 // ── CUSTOM ICONS ──
@@ -55,7 +58,6 @@ function formatTime(s: number): string {
 }
 
 export function Player() {
-  // ADDED: Using a fallback extraction method so it doesn't crash if context isn't fully updated yet
   const playerContext = usePlayer() as any;
   const {
     currentSong,
@@ -78,7 +80,6 @@ export function Player() {
   const authUser = authContext?.user || authContext?.currentUser; 
   const toggleLikedSong = authContext?.toggleLikedSong;
 
-  // ADDED: Loop and Shuffle States
   const repeatMode = playerContext.repeatMode || 0; 
   const setRepeatMode = playerContext.setRepeatMode;
   const isShuffle = playerContext.isShuffle || false;
@@ -87,23 +88,76 @@ export function Player() {
   const [isMuted, setIsMuted] = useState(false);
   const [prevVolume, setPrevVolume] = useState(0.8);
   const [isExpanded, setIsExpanded] = useState(false);
-  const [showTimerMenu, setShowTimerMenu] = useState(false);
+  
+  // ── NEW: Multi-step Options Menu State ──
+  const [showOptionsMenu, setShowOptionsMenu] = useState(false);
+  const [menuView, setMenuView] = useState<'main' | 'timer' | 'playlists'>('main');
+  const [userPlaylists, setUserPlaylists] = useState<any[]>([]);
+  const [newPlaylistName, setNewPlaylistName] = useState('');
+  const [isFetchingPlaylists, setIsFetchingPlaylists] = useState(false);
 
   const isLiked = currentSong && userProfile?.likedSongs?.includes(currentSong.id);
 
-  // ADDED: Handlers for Loop and Shuffle
+  // Fetch playlists when menu opens to 'playlists' view
+  useEffect(() => {
+    if (menuView === 'playlists' && authUser) {
+      const fetchPlaylists = async () => {
+        setIsFetchingPlaylists(true);
+        try {
+          const q = query(collection(db, 'playlists'), where('userId', '==', authUser.uid));
+          const snap = await getDocs(q);
+          setUserPlaylists(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+        } catch (error) {
+          console.error("Error fetching playlists:", error);
+        } finally {
+          setIsFetchingPlaylists(false);
+        }
+      };
+      fetchPlaylists();
+    }
+  }, [menuView, authUser]);
+
+  const handleCreateAndAddPlaylist = async () => {
+    if (!newPlaylistName.trim() || !authUser || !currentSong) return;
+    try {
+      const newPl = {
+        name: newPlaylistName,
+        userId: authUser.uid,
+        songs: [currentSong.id], // Add current song immediately
+        createdAt: new Date()
+      };
+      await addDoc(collection(db, 'playlists'), newPl);
+      setNewPlaylistName('');
+      setShowOptionsMenu(false);
+      alert('Playlist created & song added!');
+    } catch (error) {
+      console.error("Error creating playlist:", error);
+      alert("Failed to create playlist.");
+    }
+  };
+
+  const handleAddToExistingPlaylist = async (playlistId: string) => {
+    if (!currentSong) return;
+    try {
+      const ref = doc(db, 'playlists', playlistId);
+      await updateDoc(ref, {
+        songs: arrayUnion(currentSong.id)
+      });
+      setShowOptionsMenu(false);
+      alert('Added to playlist!');
+    } catch (error) {
+      console.error("Error updating playlist:", error);
+    }
+  };
+
   const handleToggleRepeat = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (setRepeatMode) {
-      setRepeatMode(repeatMode === 0 ? 1 : repeatMode === 1 ? 2 : 0);
-    }
+    if (setRepeatMode) setRepeatMode(repeatMode === 0 ? 1 : repeatMode === 1 ? 2 : 0);
   };
 
   const handleToggleShuffle = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (setIsShuffle) {
-      setIsShuffle(!isShuffle);
-    }
+    if (setIsShuffle) setIsShuffle(!isShuffle);
   };
 
   const handleMuteToggle = () => {
@@ -133,41 +187,117 @@ export function Player() {
       alert("Please sign in to like songs!");
       return;
     }
-
-    if (toggleLikedSong) {
-      await toggleLikedSong(currentSong.id);
-    }
+    if (toggleLikedSong) await toggleLikedSong(currentSong.id);
   };
 
-  const renderTimerDropdown = (position: 'top' | 'bottom') => (
-    <div className={`absolute ${position === 'bottom' ? 'bottom-full mb-4' : 'top-full mt-2'} right-0 w-48 bg-zinc-900 border border-zinc-800 rounded-lg shadow-2xl overflow-hidden z-[70]`}>
-      <div className="p-3 border-b border-zinc-800">
-        <p className="text-xs font-bold text-zinc-400 uppercase tracking-wider">Sleep Timer</p>
-      </div>
-      <div className="flex flex-col py-1">
-        {[
-          { label: 'Off', value: null },
-          { label: '15 minutes', value: 15 },
-          { label: '30 minutes', value: 30 },
-          { label: '45 minutes', value: 45 },
-          { label: '1 hour', value: 60 },
-          { label: 'End of track', value: 'track' },
-        ].map((option) => (
-          <button
-            key={option.label}
-            onClick={() => {
-              setSleepTimerAction(option.value as number | 'track' | null);
-              setShowTimerMenu(false);
-            }}
-            className={`text-left px-4 py-2 text-sm transition ${
-              sleepTimer === option.value 
-                ? 'text-emerald-400 bg-zinc-800' 
-                : 'text-zinc-300 hover:bg-zinc-800 hover:text-white'
-            }`}
-          >
-            {option.label}
+  // ── DYNAMIC OPTIONS DROPDOWN ──
+  const renderOptionsMenu = (position: 'top' | 'bottom') => (
+    <div className={`absolute ${position === 'bottom' ? 'bottom-full mb-4' : 'top-full mt-2'} right-0 w-56 bg-zinc-900 border border-zinc-800 rounded-xl shadow-2xl overflow-hidden z-[70] flex flex-col`}>
+      
+      {/* HEADER WITH BACK BUTTON */}
+      <div className="p-3 border-b border-zinc-800 flex items-center">
+        {menuView !== 'main' && (
+          <button onClick={() => setMenuView('main')} className="mr-2 text-zinc-400 hover:text-white">
+             <ChevronDownIcon className="w-5 h-5 rotate-90" />
           </button>
-        ))}
+        )}
+        <p className="text-xs font-bold text-zinc-400 uppercase tracking-wider flex-1 text-center pr-5">
+          {menuView === 'main' ? 'Options' : menuView === 'timer' ? 'Sleep Timer' : 'Add to Playlist'}
+        </p>
+      </div>
+
+      {/* CONTENT */}
+      <div className="flex flex-col py-1 max-h-64 overflow-y-auto">
+        
+        {/* VIEW: MAIN */}
+        {menuView === 'main' && (
+          <>
+            <button
+              onClick={() => setMenuView('timer')}
+              className="text-left px-4 py-3 text-sm font-medium text-zinc-200 hover:bg-zinc-800 hover:text-white flex items-center justify-between transition-colors"
+            >
+              Sleep Timer
+              {sleepTimer && <span className="text-xs text-emerald-500">Active</span>}
+            </button>
+            <button
+              onClick={() => {
+                if (!authUser) {
+                  alert("Sign in to create playlists!");
+                  setShowOptionsMenu(false);
+                  return;
+                }
+                setMenuView('playlists');
+              }}
+              className="text-left px-4 py-3 text-sm font-medium text-zinc-200 hover:bg-zinc-800 hover:text-white transition-colors"
+            >
+              Add to Playlist
+            </button>
+          </>
+        )}
+
+        {/* VIEW: SLEEP TIMER */}
+        {menuView === 'timer' && (
+          [
+            { label: 'Off', value: null },
+            { label: '15 minutes', value: 15 },
+            { label: '30 minutes', value: 30 },
+            { label: '45 minutes', value: 45 },
+            { label: '1 hour', value: 60 },
+            { label: 'End of track', value: 'track' },
+          ].map((option) => (
+            <button
+              key={option.label}
+              onClick={() => {
+                setSleepTimerAction(option.value as number | 'track' | null);
+                setShowOptionsMenu(false);
+                setMenuView('main');
+              }}
+              className={`text-left px-4 py-2 text-sm transition ${
+                sleepTimer === option.value ? 'text-emerald-400 bg-zinc-800' : 'text-zinc-300 hover:bg-zinc-800 hover:text-white'
+              }`}
+            >
+              {option.label}
+            </button>
+          ))
+        )}
+
+        {/* VIEW: PLAYLISTS */}
+        {menuView === 'playlists' && (
+          <div className="p-2 flex flex-col gap-1">
+            <div className="flex items-center gap-2 px-2 pb-2 border-b border-zinc-800 mb-1">
+              <input 
+                type="text" 
+                placeholder="New playlist..." 
+                value={newPlaylistName}
+                onChange={(e) => setNewPlaylistName(e.target.value)}
+                className="w-full bg-zinc-800 text-white text-xs px-2 py-1.5 rounded outline-none focus:ring-1 focus:ring-emerald-500"
+              />
+              <button 
+                onClick={handleCreateAndAddPlaylist}
+                disabled={!newPlaylistName.trim()}
+                className="bg-emerald-500 text-black p-1.5 rounded disabled:opacity-50 hover:bg-emerald-400 transition"
+              >
+                <PlusIcon className="w-4 h-4" />
+              </button>
+            </div>
+            
+            {isFetchingPlaylists ? (
+              <p className="text-xs text-zinc-500 text-center py-4">Loading...</p>
+            ) : userPlaylists.length === 0 ? (
+              <p className="text-xs text-zinc-500 text-center py-4">No playlists yet.</p>
+            ) : (
+              userPlaylists.map(pl => (
+                <button
+                  key={pl.id}
+                  onClick={() => handleAddToExistingPlaylist(pl.id)}
+                  className="text-left px-2 py-2 text-sm text-zinc-300 hover:bg-zinc-800 hover:text-white rounded transition truncate"
+                >
+                  {pl.name}
+                </button>
+              ))
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -185,58 +315,42 @@ export function Player() {
 
   return (
     <>
-      {/* ── EXPANDED VIEWS ── */}
       {isExpanded && (
         <>
           {/* 1. MOBILE FULL SCREEN OVERLAY */}
           <div className="md:hidden fixed inset-0 z-[60] bg-zinc-950 flex flex-col pt-12 pb-8 px-6">
             <div className="flex items-center justify-between mb-8">
-              
-              <button
-                onClick={() => setIsExpanded(false)}
-                className="p-2 -ml-2 text-zinc-400 hover:text-white transition"
-              >
+              <button onClick={() => setIsExpanded(false)} className="p-2 -ml-2 text-zinc-400 hover:text-white transition">
                 <ChevronDownIcon className="w-6 h-6" />
               </button>
-              <span className="text-xs font-bold tracking-widest text-zinc-400 uppercase">
-                Now Playing
-              </span>
+              <span className="text-xs font-bold tracking-widest text-zinc-400 uppercase">Now Playing</span>
               
-              {/* MOBILE SLEEP TIMER MENU */}
+              {/* MOBILE 3 DOTS MENU */}
               <div className="relative flex items-center">
                 <button 
-                  onClick={() => setShowTimerMenu(!showTimerMenu)}
-                  className={`p-2 -mr-2 transition ${sleepTimer ? 'text-emerald-400' : 'text-zinc-400 hover:text-white'}`}
+                  onClick={() => {
+                    setShowOptionsMenu(!showOptionsMenu);
+                    setMenuView('main');
+                  }}
+                  className={`p-2 -mr-2 transition ${showOptionsMenu ? 'text-white' : 'text-zinc-400 hover:text-white'}`}
                 >
-                  <MoonIcon className="w-6 h-6" />
+                  <MoreHorizontalIcon className="w-6 h-6" />
+                  {sleepTimer && <div className="absolute top-2 right-2 w-2 h-2 bg-emerald-500 rounded-full" />}
                 </button>
-                {showTimerMenu && renderTimerDropdown('top')}
+                {showOptionsMenu && renderOptionsMenu('top')}
               </div>
             </div>
 
             <div className="flex-1 min-h-0 flex items-center justify-center mb-8">
-              <img
-                src={currentSong.cover}
-                alt={currentSong.album}
-                className="w-full aspect-square object-cover rounded-2xl shadow-2xl shadow-black/60"
-              />
+              <img src={currentSong.cover} alt={currentSong.album} className="w-full aspect-square object-cover rounded-2xl shadow-2xl shadow-black/60" />
             </div>
 
-            {/* Info + MOBILE LIKE BUTTON */}
             <div className="mb-6 flex items-start justify-between gap-4">
               <div className="flex-1 min-w-0">
-                <h2 className="text-2xl font-bold text-white mb-1 truncate">
-                  {currentSong.title}
-                </h2>
-                <p className="text-emerald-400 text-lg truncate">
-                  {currentSong.artist.join(', ')}
-                </p>
+                <h2 className="text-2xl font-bold text-white mb-1 truncate">{currentSong.title}</h2>
+                <p className="text-emerald-400 text-lg truncate">{currentSong.artist.join(', ')}</p>
               </div>
-              
-              <button 
-                onClick={handleToggleLike} 
-                className="mt-1 flex-shrink-0 hover:scale-110 active:scale-95 transition-transform"
-              >
+              <button onClick={handleToggleLike} className="mt-1 flex-shrink-0 hover:scale-110 active:scale-95 transition-transform">
                 {isLiked ? (
                   <HeartFilledIcon className="w-8 h-8 text-emerald-500 drop-shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
                 ) : (
@@ -245,22 +359,10 @@ export function Player() {
               </button>
             </div>
 
-            {/* Mobile Scrubber */}
             <div className="mb-8">
               <div className="relative w-full h-1.5 bg-zinc-800 rounded-full mb-2 cursor-pointer group">
-                <div
-                  className="absolute inset-y-0 left-0 bg-emerald-500 rounded-full group-hover:bg-emerald-400 transition-colors pointer-events-none"
-                  style={{ width: `${progress}%` }}
-                />
-                <input
-                  type="range"
-                  min="0"
-                  max="100"
-                  step="0.1"
-                  value={progress}
-                  onChange={handleSeek}
-                  className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                />
+                <div className="absolute inset-y-0 left-0 bg-emerald-500 rounded-full group-hover:bg-emerald-400 transition-colors pointer-events-none" style={{ width: `${progress}%` }} />
+                <input type="range" min="0" max="100" step="0.1" value={progress} onChange={handleSeek} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
               </div>
               <div className="flex justify-between text-xs text-zinc-500 font-medium tabular-nums">
                 <span>{formatTime(currentTime)}</span>
@@ -268,29 +370,19 @@ export function Player() {
               </div>
             </div>
 
-            {/* ADDED: Big Mobile Controls with Loop and Shuffle injected */}
             <div className="flex items-center justify-between px-2 gap-4 mb-4">
-              {/* Loop Button */}
               <button onClick={handleToggleRepeat} className={`transition p-2 ${repeatMode > 0 ? 'text-emerald-500' : 'text-zinc-400 hover:text-white'}`}>
                 {repeatMode === 1 ? <RepeatOneIcon className="w-6 h-6" /> : <RepeatIcon className="w-6 h-6" />}
               </button>
-
               <button onClick={playPrevious} className="text-zinc-400 hover:text-white transition">
                 <SkipPrevIcon className="w-8 h-8" />
               </button>
-
-              <button
-                onClick={togglePlay}
-                className="w-16 h-16 rounded-full bg-emerald-500 text-black flex items-center justify-center hover:scale-105 active:scale-95 transition shadow-lg shadow-emerald-500/30"
-              >
+              <button onClick={togglePlay} className="w-16 h-16 rounded-full bg-emerald-500 text-black flex items-center justify-center hover:scale-105 active:scale-95 transition shadow-lg shadow-emerald-500/30">
                 {isPlaying ? <PauseIcon className="w-8 h-8" /> : <PlayIcon className="w-8 h-8 ml-1" />}
               </button>
-
               <button onClick={playNext} className="text-zinc-400 hover:text-white transition">
                 <SkipNextIcon className="w-8 h-8" />
               </button>
-
-              {/* Shuffle Button */}
               <button onClick={handleToggleShuffle} className={`transition p-2 ${isShuffle ? 'text-emerald-500' : 'text-zinc-400 hover:text-white'}`}>
                 <ShuffleIcon className="w-6 h-6" />
               </button>
@@ -301,35 +393,17 @@ export function Player() {
           <div className="hidden md:flex fixed right-0 top-0 bottom-[72px] w-80 bg-zinc-900 border-l border-zinc-800/40 z-30 flex-col p-6 shadow-2xl overflow-y-auto">
             <div className="flex items-center justify-between mb-6">
               <h3 className="font-bold text-white">Now Playing</h3>
-              <button
-                onClick={() => setIsExpanded(false)}
-                className="p-1.5 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-lg transition"
-              >
+              <button onClick={() => setIsExpanded(false)} className="p-1.5 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-lg transition">
                 <CloseIcon className="w-5 h-5" />
               </button>
             </div>
-
-            <img
-              src={currentSong.cover}
-              alt={currentSong.album}
-              className="w-full aspect-square object-cover rounded-xl shadow-xl shadow-black/40 mb-4"
-            />
-
-            {/* Info + DESKTOP LIKE BUTTON */}
+            <img src={currentSong.cover} alt={currentSong.album} className="w-full aspect-square object-cover rounded-xl shadow-xl shadow-black/40 mb-4" />
             <div className="flex items-start justify-between gap-3 mb-6">
               <div className="flex-1 min-w-0">
-                <h2 className="text-xl font-bold text-white mb-1 truncate">
-                  {currentSong.title}
-                </h2>
-                <p className="text-zinc-400 text-sm truncate">
-                  {currentSong.artist.join(', ')}
-                </p>
+                <h2 className="text-xl font-bold text-white mb-1 truncate">{currentSong.title}</h2>
+                <p className="text-zinc-400 text-sm truncate">{currentSong.artist.join(', ')}</p>
               </div>
-
-              <button 
-                onClick={handleToggleLike} 
-                className="mt-1 flex-shrink-0 hover:scale-110 active:scale-95 transition-transform"
-              >
+              <button onClick={handleToggleLike} className="mt-1 flex-shrink-0 hover:scale-110 active:scale-95 transition-transform">
                 {isLiked ? (
                   <HeartFilledIcon className="w-6 h-6 text-emerald-500 drop-shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
                 ) : (
@@ -337,15 +411,9 @@ export function Player() {
                 )}
               </button>
             </div>
-
-            {/* Extra desktop info box */}
             <div className="bg-zinc-950/50 rounded-xl p-4 border border-zinc-800/50">
-              <p className="text-xs text-zinc-500 uppercase tracking-wider font-bold mb-2">
-                About the Album
-              </p>
-              <p className="text-white text-sm font-medium mb-1">
-                {currentSong.album}
-              </p>
+              <p className="text-xs text-zinc-500 uppercase tracking-wider font-bold mb-2">About the Album</p>
+              <p className="text-white text-sm font-medium mb-1">{currentSong.album}</p>
               <p className="text-zinc-400 text-xs">AC Music Library</p>
             </div>
           </div>
@@ -353,73 +421,37 @@ export function Player() {
       )}
 
       {/* ── STANDARD BOTTOM BAR ── */}
-      <div
-        className={`fixed bottom-16 md:bottom-0 left-0 right-0 md:left-60 bg-zinc-900/95 backdrop-blur-xl border-t border-zinc-800/40 z-40 ${
-          isExpanded ? 'hidden md:block' : 'block'
-        }`}
-      >
+      <div className={`fixed bottom-16 md:bottom-0 left-0 right-0 md:left-60 bg-zinc-900/95 backdrop-blur-xl border-t border-zinc-800/40 z-40 ${isExpanded ? 'hidden md:block' : 'block'}`}>
         <div className="relative h-1 group cursor-pointer">
           <div className="absolute inset-0 bg-zinc-700/60" />
-          <div
-            className="absolute inset-y-0 left-0 bg-emerald-500 group-hover:bg-emerald-400 transition-colors pointer-events-none"
-            style={{ width: `${progress}%` }}
-          />
-          <div
-            className="absolute top-1/2 -translate-y-1/2 w-3 h-3 bg-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none shadow-md"
-            style={{ left: `calc(${progress}% - 6px)` }}
-          />
-          <input
-            type="range"
-            min="0"
-            max="100"
-            step="0.1"
-            value={progress}
-            onChange={handleSeek}
-            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-            aria-label="Seek"
-          />
+          <div className="absolute inset-y-0 left-0 bg-emerald-500 group-hover:bg-emerald-400 transition-colors pointer-events-none" style={{ width: `${progress}%` }} />
+          <div className="absolute top-1/2 -translate-y-1/2 w-3 h-3 bg-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none shadow-md" style={{ left: `calc(${progress}% - 6px)` }} />
+          <input type="range" min="0" max="100" step="0.1" value={progress} onChange={handleSeek} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" aria-label="Seek" />
         </div>
 
         <div className="flex items-center px-4 py-3 gap-3">
-          <div
-            onClick={() => setIsExpanded(!isExpanded)}
-            className="flex items-center gap-3 flex-1 min-w-0 cursor-pointer group hover:bg-zinc-800/40 p-1 -ml-1 rounded-lg transition-colors"
-          >
-            <img
-              src={currentSong.cover}
-              alt={currentSong.album}
-              className="w-11 h-11 rounded-lg object-cover flex-shrink-0 shadow-lg ring-1 ring-white/5"
-            />
+          <div onClick={() => setIsExpanded(!isExpanded)} className="flex items-center gap-3 flex-1 min-w-0 cursor-pointer group hover:bg-zinc-800/40 p-1 -ml-1 rounded-lg transition-colors">
+            <img src={currentSong.cover} alt={currentSong.album} className="w-11 h-11 rounded-lg object-cover flex-shrink-0 shadow-lg ring-1 ring-white/5" />
             <div className="min-w-0">
-              <p className="text-sm font-semibold text-white truncate leading-tight group-hover:text-emerald-400 transition-colors">
-                {currentSong.title}
-              </p>
-              <p className="text-xs text-zinc-400 truncate mt-0.5">
-                {currentSong.artist.join(', ')}
-              </p>
+              <p className="text-sm font-semibold text-white truncate leading-tight group-hover:text-emerald-400 transition-colors">{currentSong.title}</p>
+              <p className="text-xs text-zinc-400 truncate mt-0.5">{currentSong.artist.join(', ')}</p>
             </div>
             <ExpandIcon className="w-4 h-4 text-zinc-500 opacity-0 group-hover:opacity-100 transition-opacity hidden md:block ml-2" />
           </div>
 
-          {/* ADDED: Desktop Controls with Loop and Shuffle injected */}
           <div className="flex items-center gap-3">
             <button onClick={handleToggleRepeat} className={`hidden md:flex transition ${repeatMode > 0 ? 'text-emerald-500' : 'text-zinc-500 hover:text-white'}`}>
               {repeatMode === 1 ? <RepeatOneIcon className="w-5 h-5" /> : <RepeatIcon className="w-5 h-5" />}
             </button>
-
             <button className="hidden md:flex text-zinc-500 hover:text-white transition-colors" onClick={playPrevious}>
               <SkipPrevIcon className="w-5 h-5" />
             </button>
-            <button
-              onClick={togglePlay}
-              className="w-10 h-10 rounded-full bg-white hover:bg-zinc-200 text-black flex items-center justify-center transition-all hover:scale-105 active:scale-95 shadow-lg"
-            >
+            <button onClick={togglePlay} className="w-10 h-10 rounded-full bg-white hover:bg-zinc-200 text-black flex items-center justify-center transition-all hover:scale-105 active:scale-95 shadow-lg">
               {isPlaying ? <PauseIcon className="w-5 h-5" /> : <PlayIcon className="w-5 h-5 ml-0.5" />}
             </button>
             <button className="hidden md:flex text-zinc-500 hover:text-white transition-colors" onClick={playNext}>
               <SkipNextIcon className="w-5 h-5" />
             </button>
-
             <button onClick={handleToggleShuffle} className={`hidden md:flex transition ${isShuffle ? 'text-emerald-500' : 'text-zinc-500 hover:text-white'}`}>
               <ShuffleIcon className="w-5 h-5" />
             </button>
@@ -432,42 +464,30 @@ export function Player() {
               <span>{formatTime(duration)}</span>
             </div>
 
-            {/* DESKTOP SLEEP TIMER MENU */}
+            {/* DESKTOP 3 DOTS MENU */}
             <div className="relative flex items-center">
               <button 
-                onClick={() => setShowTimerMenu(!showTimerMenu)}
-                className={`p-2 rounded-full hover:bg-zinc-800 transition ${sleepTimer ? 'text-emerald-400' : 'text-zinc-400 hover:text-white'}`}
-                title="Sleep Timer"
+                onClick={() => {
+                  setShowOptionsMenu(!showOptionsMenu);
+                  setMenuView('main');
+                }}
+                className={`p-2 rounded-full hover:bg-zinc-800 transition relative ${showOptionsMenu ? 'text-white' : 'text-zinc-400 hover:text-white'}`}
               >
-                <MoonIcon className="w-5 h-5" />
+                <MoreHorizontalIcon className="w-5 h-5" />
+                {sleepTimer && <div className="absolute top-1 right-1 w-2 h-2 bg-emerald-500 rounded-full" />}
               </button>
-              {showTimerMenu && renderTimerDropdown('bottom')}
+              {showOptionsMenu && renderOptionsMenu('bottom')}
             </div>
 
             <div className="flex items-center gap-2">
               <button onClick={handleMuteToggle} className="text-zinc-500 hover:text-white transition-colors">
                 {isMuted || volume === 0 ? <VolumeMuteIcon className="w-5 h-5" /> : <VolumeHighIcon className="w-5 h-5" />}
               </button>
-
               <div className="relative w-24 h-1 group cursor-pointer flex items-center">
                 <div className="absolute inset-0 bg-zinc-700/60 rounded-full" />
-                <div
-                  className="absolute inset-y-0 left-0 bg-emerald-500 group-hover:bg-emerald-400 transition-colors pointer-events-none rounded-full"
-                  style={{ width: `${(isMuted ? 0 : volume) * 100}%` }}
-                />
-                <div
-                  className="absolute top-1/2 -translate-y-1/2 w-3 h-3 bg-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none shadow-md"
-                  style={{ left: `calc(${(isMuted ? 0 : volume) * 100}% - 6px)` }}
-                />
-                <input
-                  type="range"
-                  min="0"
-                  max="1"
-                  step="0.01"
-                  value={isMuted ? 0 : volume}
-                  onChange={handleVolumeChange}
-                  className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                />
+                <div className="absolute inset-y-0 left-0 bg-emerald-500 group-hover:bg-emerald-400 transition-colors pointer-events-none rounded-full" style={{ width: `${(isMuted ? 0 : volume) * 100}%` }} />
+                <div className="absolute top-1/2 -translate-y-1/2 w-3 h-3 bg-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none shadow-md" style={{ left: `calc(${(isMuted ? 0 : volume) * 100}% - 6px)` }} />
+                <input type="range" min="0" max="1" step="0.01" value={isMuted ? 0 : volume} onChange={handleVolumeChange} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
               </div>
             </div>
           </div>
