@@ -2,7 +2,7 @@ import React from 'react';
 import {
   HomeIcon,
   SearchIcon,
-  HeartIcon,
+  LibraryIcon, // ADDED: The new library icon
   UserIcon,
   MusicNoteIcon,
 } from './Icons';
@@ -17,7 +17,7 @@ interface SidebarProps {
 const navItems: { view: ViewType; label: string; Icon: React.FC<{ className?: string }> }[] = [
   { view: 'home', label: 'Home', Icon: HomeIcon },
   { view: 'search', label: 'Search', Icon: SearchIcon },
-  { view: 'liked', label: 'Liked Songs', Icon: HeartIcon },
+  { view: 'liked', label: 'Your Library', Icon: LibraryIcon }, // UPDATED: Changed from Liked Songs
 ];
 
 export function Sidebar({ currentView, onNavigate, isAuthenticated }: SidebarProps) {
@@ -95,7 +95,7 @@ export function Sidebar({ currentView, onNavigate, isAuthenticated }: SidebarPro
 
       {/* Footer & Legal Disclaimer */}
       <div className="px-5 py-4 border-t border-zinc-800/40">
-        <p className="text-[10px] text-zinc-700 font-medium mb-3">AC Music © 2025</p>
+        <p className="text-[10px] text-zinc-700 font-medium mb-3">AC Music © 2026</p>
         <p className="text-[9px] text-zinc-500 leading-tight">
           This is a personal, non-commercial educational project built to demonstrate full-stack web development.
           <br /><br />
