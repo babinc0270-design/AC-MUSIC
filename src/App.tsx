@@ -12,7 +12,7 @@ import { ViewType } from './types';
 import { useAuth } from './context/AuthContext';
 
 // ADDED: Import your brand new Library component!
-import { YourLibrary } from './components/YourLibrary'; 
+import { YourLibrary } from './views/YourLibrary'; 
 
 function AppShell() {
   const { user, loading } = useAuth(); // <--- Make sure "user" is inside these curly braces
