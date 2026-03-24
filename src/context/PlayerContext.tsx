@@ -21,17 +21,18 @@ interface PlayerContextValue {
   duration: number;
   volume: number;
   sleepTimer: number | 'track' | null;
-  repeatMode: number; // ADDED: 0 = off, 1 = once, 2 = forever
-  isShuffle: boolean; // ADDED: true = random songs
+  repeatMode: number; 
+  isShuffle: boolean; 
   setSleepTimerAction: (option: number | 'track' | null) => void;
   playSong: (song: Song) => void;
+  playContext: (song: Song, queue: Song[]) => void; // ADDED: Contextual Playback
   togglePlay: () => void;
   seek: (pct: number) => void;
   setVolume: (v: number) => void;
   playNext: () => void;
   playPrevious: () => void;
-  setRepeatMode: (mode: number) => void; // ADDED
-  setIsShuffle: (shuffle: boolean) => void; // ADDED
+  setRepeatMode: (mode: number) => void; 
+  setIsShuffle: (shuffle: boolean) => void; 
 }
 
 const PlayerContext = createContext<PlayerContextValue | null>(null);
@@ -48,6 +49,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   // YouTube Player State
   const [ytPlayer, setYtPlayer] = useState<YouTubePlayer | null>(null);
+  const ytPlayerRef = useRef<YouTubePlayer | null>(null); // Reference for stopping at end of playlists
+
   const [currentSong, setCurrentSong] = useState<Song | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -60,8 +63,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const sleepTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const stopAfterTrackRef = useRef<boolean>(false);
 
-  /* ── ADDED: Loop & Shuffle State & Refs ── */
-  // We use refs here so the YouTube 'onEnded' event always sees the latest changes!
+  /* ── Loop & Shuffle State & Refs ── */
   const [repeatMode, setRepeatModeState] = useState(0);
   const repeatModeRef = useRef(0);
   const setRepeatMode = (mode: number) => {
@@ -82,16 +84,15 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     setHasRepeatedOnceState(val);
     hasRepeatedOnceRef.current = val;
   };
-  /* ──────────────────────────────────────── */
 
   const historyRef = useRef<Song[]>([]);
   const currentSongRef = useRef<Song | null>(null);
   const playNextRef = useRef<() => void>();
   const songsRef = useRef<Song[]>([]);
+  const currentQueueRef = useRef<Song[]>([]); // ADDED: Holds the current playlist queue
 
   /* ── Sleep Timer Logic ── */
   const setSleepTimerAction = (option: number | 'track' | null) => {
-    // 1. Clear any existing timers first
     if (sleepTimeoutRef.current) {
       clearTimeout(sleepTimeoutRef.current);
       sleepTimeoutRef.current = null;
@@ -99,10 +100,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     stopAfterTrackRef.current = false;
     setSleepTimer(option);
 
-    // 2. Set the new timer
     if (typeof option === 'number') {
       sleepTimeoutRef.current = setTimeout(() => {
-        if (ytPlayer) ytPlayer.pauseVideo();
+        if (ytPlayerRef.current) ytPlayerRef.current.pauseVideo();
         setIsPlaying(false);
         setSleepTimer(null);
       }, option * 60 * 1000);
@@ -111,16 +111,13 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  /* ── 1. Fetch Live Database ── */
+  /* ── Fetch Live Database ── */
   useEffect(() => {
     const fetchSongs = async () => {
       try {
         const querySnapshot = await getDocs(collection(db, 'songs'));
         const liveSongs = querySnapshot.docs.map((doc) => doc.data() as Song);
-        
-        // Shuffle the songs so the homepage looks fresh!
         const shuffled = liveSongs.sort(() => 0.5 - Math.random());
-        
         setSongs(shuffled);
         songsRef.current = shuffled;
       } catch (error) {
@@ -132,41 +129,60 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     fetchSongs();
   }, []);
 
-  /* ── Auto-Play Logic ── */
+  /* ── Auto-Play Context Logic ── */
   const playNext = () => {
-    // ADDED: Always reset Loop Once tracker when moving to a new song
     setHasRepeatedOnce(false); 
 
     const current = currentSongRef.current;
     const allSongs = songsRef.current;
+    const queue = currentQueueRef.current; // The specific playlist we are listening to!
+
     if (!current || allSongs.length === 0) return;
 
-    let candidates: Song[] = [];
+    let nextSong: Song | undefined = undefined;
 
-    // ADDED: Shuffle Logic
-    if (isShuffleRef.current) {
-      // Pick any song that isn't the current one
-      candidates = allSongs.filter((s) => s.id !== current.id);
-    } else {
-      // Normal Logic (Artist -> Genre -> Random)
-      candidates = allSongs.filter(
-        (s) => s.id !== current.id && s.artist.some((a) => current.artist.includes(a))
-      );
-
-      if (candidates.length === 0) {
-        candidates = allSongs.filter(
-          (s) => s.id !== current.id && (s as any).genre === (current as any).genre
-        );
+    // SCENARIO 1: WE ARE PLAYING FROM A PLAYLIST OR LIKED SONGS
+    if (queue.length > 0) {
+      if (isShuffleRef.current) {
+        // Pick random song from the playlist
+        const candidates = queue.filter(s => s.id !== current.id);
+        if (candidates.length > 0) {
+          nextSong = candidates[Math.floor(Math.random() * candidates.length)];
+        }
+      } else {
+        // Play the exact next song in the playlist list
+        const currentIndex = queue.findIndex(s => s.id === current.id);
+        if (currentIndex !== -1 && currentIndex < queue.length - 1) {
+          nextSong = queue[currentIndex + 1];
+        }
       }
-
-      if (candidates.length === 0) {
+    } 
+    // SCENARIO 2: INFINITE RADIO (Home Screen / Search)
+    else {
+      let candidates: Song[] = [];
+      if (isShuffleRef.current) {
         candidates = allSongs.filter((s) => s.id !== current.id);
+      } else {
+        candidates = allSongs.filter((s) => s.id !== current.id && s.artist.some((a) => current.artist.includes(a)));
+        if (candidates.length === 0) {
+          candidates = allSongs.filter((s) => s.id !== current.id && (s as any).genre === (current as any).genre);
+        }
+        if (candidates.length === 0) {
+          candidates = allSongs.filter((s) => s.id !== current.id);
+        }
+      }
+      if (candidates.length > 0) {
+        nextSong = candidates[Math.floor(Math.random() * candidates.length)];
       }
     }
 
-    if (candidates.length > 0) {
-      const nextSong = candidates[Math.floor(Math.random() * candidates.length)];
+    // Trigger Playback
+    if (nextSong) {
       internalPlaySong(nextSong, false);
+    } else {
+      // Playlist has finished! Pause the music exactly like Spotify.
+      setIsPlaying(false);
+      if (ytPlayerRef.current) ytPlayerRef.current.pauseVideo();
     }
   };
 
@@ -206,61 +222,68 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     setCurrentTime(0);
     setDuration(0);
     setIsPlaying(true);
-    // Triggers the YouTube component to auto-play when ready
   };
 
-  const playSong = (song: Song): void => internalPlaySong(song, false);
+  // Standard play (clears playlist context, uses infinite radio)
+  const playSong = (song: Song): void => {
+    currentQueueRef.current = []; 
+    internalPlaySong(song, false);
+  };
+
+  // Context play (Locks the player into a specific playlist)
+  const playContext = (song: Song, queue: Song[]): void => {
+    currentQueueRef.current = queue; 
+    internalPlaySong(song, false);
+  };
 
   const togglePlay = (): void => {
-    if (!ytPlayer || !currentSong) return;
+    if (!ytPlayerRef.current || !currentSong) return;
 
     if (isPlaying) {
-      ytPlayer.pauseVideo();
+      ytPlayerRef.current.pauseVideo();
       setIsPlaying(false);
     } else {
-      ytPlayer.playVideo();
+      ytPlayerRef.current.playVideo();
       setIsPlaying(true);
     }
   };
 
   const seek = async (pct: number) => {
-    if (!ytPlayer) return;
-    const dur = await ytPlayer.getDuration();
+    if (!ytPlayerRef.current) return;
+    const dur = await ytPlayerRef.current.getDuration();
     if (!dur) return;
     const newTime = (pct / 100) * dur;
-    ytPlayer.seekTo(newTime, true);
+    ytPlayerRef.current.seekTo(newTime, true);
     setProgress(pct);
     setCurrentTime(newTime);
   };
 
   const setVolume = (v: number): void => {
     const clamped = Math.max(0, Math.min(1, v));
-    if (ytPlayer) ytPlayer.setVolume(clamped * 100); // YouTube volume is 0-100
+    if (ytPlayerRef.current) ytPlayerRef.current.setVolume(clamped * 100); 
     setVolumeState(clamped);
   };
 
   /* ── YouTube Timer Sync ── */
   useEffect(() => {
     let interval: NodeJS.Timeout;
-    if (isPlaying && ytPlayer) {
+    if (isPlaying && ytPlayerRef.current) {
       interval = setInterval(async () => {
         try {
-          const time = await ytPlayer.getCurrentTime();
-          const dur = await ytPlayer.getDuration();
+          const time = await ytPlayerRef.current!.getCurrentTime();
+          const dur = await ytPlayerRef.current!.getDuration();
           setCurrentTime(time);
           setDuration(dur);
           if (dur > 0) {
             setProgress((time / dur) * 100);
           }
-        } catch (e) {
-          // Ignore errors if player is still loading
-        }
+        } catch (e) {}
       }, 1000);
     }
     return () => clearInterval(interval);
-  }, [isPlaying, ytPlayer]);
+  }, [isPlaying]);
 
-  /* ── 🎵 OS Media Session API (The Windows Integration) 🎵 ── */
+  /* ── OS Media Session API ── */
   useEffect(() => {
     if ('mediaSession' in navigator && currentSong) {
       navigator.mediaSession.metadata = new MediaMetadata({
@@ -273,35 +296,28 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       });
 
       navigator.mediaSession.setActionHandler('play', () => {
-        if (ytPlayer) ytPlayer.playVideo();
+        if (ytPlayerRef.current) ytPlayerRef.current.playVideo();
       });
-      
       navigator.mediaSession.setActionHandler('pause', () => {
-        if (ytPlayer) ytPlayer.pauseVideo();
+        if (ytPlayerRef.current) ytPlayerRef.current.pauseVideo();
       });
-      
-      navigator.mediaSession.setActionHandler('previoustrack', () => {
-        playPrevious(); 
-      });
-      
+      navigator.mediaSession.setActionHandler('previoustrack', () => playPrevious());
       navigator.mediaSession.setActionHandler('nexttrack', () => {
         if (playNextRef.current) playNextRef.current();
       });
     }
-  }, [currentSong, ytPlayer]); 
+  }, [currentSong]); 
 
   /* ── YouTube Player Events ── */
   const onPlayerReady = (event: YouTubeEvent) => {
     setYtPlayer(event.target);
+    ytPlayerRef.current = event.target;
     event.target.setVolume(volume * 100);
-    // If it takes a second to load, force play immediately
     if (isPlaying) event.target.playVideo();
   };
 
   const onPlayerStateChange = (event: YouTubeEvent) => {
     const state = event.data;
-    // 1 = Playing, 2 = Paused, 0 = Ended, -1 = Unstarted, 3 = Buffering, 5 = Video Cued
-
     if (state === 1) {
       setIsPlaying(true);
     } else if (state === 2) {
@@ -313,35 +329,30 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         setSleepTimer(null);
         stopAfterTrackRef.current = false;
       } else {
-        // ADDED: Loop Logic
+        // Loop Logic
         if (repeatModeRef.current === 2) {
-          // Loop Forever: Seek to 0 and play again
           event.target.seekTo(0, true);
           event.target.playVideo();
         } else if (repeatModeRef.current === 1) {
-          // Loop Once: Check if we already repeated
           if (!hasRepeatedOnceRef.current) {
             setHasRepeatedOnce(true);
             event.target.seekTo(0, true);
             event.target.playVideo();
           } else {
-            // Already played twice, move to next song
             setHasRepeatedOnce(false);
             if (playNextRef.current) playNextRef.current();
           }
         } else {
-          // Normal behavior: Trigger the next song.
           if (playNextRef.current) playNextRef.current();
         }
       }
     } else if (state === -1 || state === 5) {
-      // THE AGGRESSIVE BACKGROUND FIX 🚀
       event.target.playVideo();
     }
   };
 
   const onPlayerError = (event: YouTubeEvent) => {
-    console.warn("YouTube Video Embedding Restricted - Skipping to next track", event.data);
+    console.warn("YouTube Video Embedding Restricted - Skipping to next track");
     if (playNextRef.current) playNextRef.current();
   };
 
@@ -357,37 +368,29 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         duration,
         volume,
         sleepTimer,
-        repeatMode, // ADDED
-        isShuffle,  // ADDED
+        repeatMode, 
+        isShuffle,  
         setSleepTimerAction,
         playSong,
+        playContext, // Exposed to app
         togglePlay,
         seek,
         setVolume,
         playNext,
         playPrevious,
-        setRepeatMode, // ADDED
-        setIsShuffle,  // ADDED
+        setRepeatMode, 
+        setIsShuffle,  
       }}
     >
       {children}
-      
-      {/* THE SECRET WEAPON: The "Behind-the-Wall" YouTube Engine */}
       <div className="fixed top-1/2 left-1/2 w-[10px] h-[10px] z-[-50] opacity-[0.01] pointer-events-none">
         {currentSong && (
           <YouTube
-            videoId={currentSong.audio} // Uses the YouTube ID
+            videoId={currentSong.audio} 
             opts={{
               height: '10', 
               width: '10',
-              playerVars: {
-                autoplay: 1,
-                controls: 0,
-                disablekb: 1,
-                fs: 0,
-                modestbranding: 1,
-                playsinline: 1,
-              },
+              playerVars: { autoplay: 1, controls: 0, disablekb: 1, fs: 0, modestbranding: 1, playsinline: 1 },
             }}
             onReady={onPlayerReady}
             onStateChange={onPlayerStateChange}
