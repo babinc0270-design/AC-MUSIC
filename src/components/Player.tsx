@@ -56,7 +56,8 @@ function formatTime(s: number): string {
   return `${m}:${sec.toString().padStart(2, '0')}`;
 }
 
-export function Player() {
+// FIXED: Receives the onArtistClick prop from App.tsx
+export function Player({ onArtistClick }: { onArtistClick: (name: string) => void }) {
   const playerContext = usePlayer() as any;
   const {
     currentSong,
@@ -94,7 +95,6 @@ export function Player() {
   const [newPlaylistName, setNewPlaylistName] = useState('');
   const [isFetchingPlaylists, setIsFetchingPlaylists] = useState(false);
 
-  // ── CUSTOM TOAST STATE ──
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const showToast = (message: string) => {
@@ -312,7 +312,6 @@ export function Player() {
 
   return (
     <>
-      {/* ── CUSTOM TOAST NOTIFICATION ── */}
       {toastMessage && (
         <div className="fixed bottom-[100px] md:bottom-24 left-1/2 -translate-x-1/2 bg-zinc-800 text-white px-5 py-3 rounded-full shadow-2xl border border-zinc-700/50 z-[100] text-sm font-semibold flex items-center gap-3 transition-all animate-bounce">
           <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)]"></div>
@@ -344,7 +343,7 @@ export function Player() {
             </div>
 
             <div className="flex-1 min-h-0 flex items-center justify-center mb-8">
-              <img src={currentSong.cover} alt={currentSong.album} className="w-full aspect-square object-cover rounded-2xl shadow-2xl shadow-black/60" />
+              <img src={currentSong.cover} alt={currentSong.album} className="w-full h-full object-contain rounded-2xl shadow-2xl shadow-black/60" />
             </div>
 
             <div className="mb-6 flex items-start justify-between gap-4">
@@ -398,7 +397,7 @@ export function Player() {
                 <CloseIcon className="w-5 h-5" />
               </button>
             </div>
-            <img src={currentSong.cover} alt={currentSong.album} className="w-full aspect-square object-cover rounded-xl shadow-xl shadow-black/40 mb-4" />
+            <img src={currentSong.cover} alt={currentSong.album} className="w-full h-full object-contain rounded-xl shadow-xl shadow-black/40 mb-4" />
             <div className="flex items-start justify-between gap-3 mb-6">
               <div className="flex-1 min-w-0">
                 <h2 className="text-xl font-bold text-white mb-1 truncate">{currentSong.title}</h2>
@@ -434,7 +433,20 @@ export function Player() {
             <img src={currentSong.cover} alt={currentSong.album} className="w-11 h-11 rounded-lg object-cover flex-shrink-0 shadow-lg ring-1 ring-white/5" />
             <div className="min-w-0">
               <p className="text-sm font-semibold text-white truncate leading-tight group-hover:text-emerald-400 transition-colors">{currentSong.title}</p>
-              <p className="text-xs text-zinc-400 truncate mt-0.5">{currentSong.artist.join(', ')}</p>
+              
+              {/* FIXED: Artist Name now rendered as individually clickable spans! */}
+              <div className="text-xs text-zinc-400 truncate mt-0.5 flex flex-wrap gap-x-1 gap-y-0">
+                {currentSong.artist.map((artistName: string, index: number) => (
+                  <span
+                    key={artistName}
+                    // FIXED: Calls the new callback prop passed from App.tsx
+                    onClick={(e) => { e.stopPropagation(); onArtistClick(artistName); }}
+                    className="cursor-pointer hover:text-emerald-400 transition-colors"
+                  >
+                    {artistName}{index < currentSong.artist.length - 1 ? ',' : ''}
+                  </span>
+                ))}
+              </div>
             </div>
             <ExpandIcon className="w-4 h-4 text-zinc-500 opacity-0 group-hover:opacity-100 transition-opacity hidden md:block ml-2" />
           </div>
