@@ -25,7 +25,7 @@ interface PlayerContextValue {
   isShuffle: boolean; 
   setSleepTimerAction: (option: number | 'track' | null) => void;
   playSong: (song: Song) => void;
-  playContext: (song: Song, queue: Song[]) => void; // ADDED: Contextual Playback
+  playContext: (song: Song, queue: Song[]) => void; 
   togglePlay: () => void;
   seek: (pct: number) => void;
   setVolume: (v: number) => void;
@@ -49,7 +49,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   // YouTube Player State
   const [ytPlayer, setYtPlayer] = useState<YouTubePlayer | null>(null);
-  const ytPlayerRef = useRef<YouTubePlayer | null>(null); // Reference for stopping at end of playlists
+  const ytPlayerRef = useRef<YouTubePlayer | null>(null); 
 
   const [currentSong, setCurrentSong] = useState<Song | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -89,7 +89,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const currentSongRef = useRef<Song | null>(null);
   const playNextRef = useRef<() => void>();
   const songsRef = useRef<Song[]>([]);
-  const currentQueueRef = useRef<Song[]>([]); // ADDED: Holds the current playlist queue
+  const currentQueueRef = useRef<Song[]>([]); 
 
   /* ── Sleep Timer Logic ── */
   const setSleepTimerAction = (option: number | 'track' | null) => {
@@ -135,29 +135,25 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
     const current = currentSongRef.current;
     const allSongs = songsRef.current;
-    const queue = currentQueueRef.current; // The specific playlist we are listening to!
+    const queue = currentQueueRef.current; 
 
     if (!current || allSongs.length === 0) return;
 
     let nextSong: Song | undefined = undefined;
 
-    // SCENARIO 1: WE ARE PLAYING FROM A PLAYLIST OR LIKED SONGS
     if (queue.length > 0) {
       if (isShuffleRef.current) {
-        // Pick random song from the playlist
         const candidates = queue.filter(s => s.id !== current.id);
         if (candidates.length > 0) {
           nextSong = candidates[Math.floor(Math.random() * candidates.length)];
         }
       } else {
-        // Play the exact next song in the playlist list
         const currentIndex = queue.findIndex(s => s.id === current.id);
         if (currentIndex !== -1 && currentIndex < queue.length - 1) {
           nextSong = queue[currentIndex + 1];
         }
       }
     } 
-    // SCENARIO 2: INFINITE RADIO (Home Screen / Search)
     else {
       let candidates: Song[] = [];
       if (isShuffleRef.current) {
@@ -176,11 +172,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       }
     }
 
-    // Trigger Playback
     if (nextSong) {
       internalPlaySong(nextSong, false);
     } else {
-      // Playlist has finished! Pause the music exactly like Spotify.
       setIsPlaying(false);
       if (ytPlayerRef.current) ytPlayerRef.current.pauseVideo();
     }
@@ -224,13 +218,11 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     setIsPlaying(true);
   };
 
-  // Standard play (clears playlist context, uses infinite radio)
   const playSong = (song: Song): void => {
     currentQueueRef.current = []; 
     internalPlaySong(song, false);
   };
 
-  // Context play (Locks the player into a specific playlist)
   const playContext = (song: Song, queue: Song[]): void => {
     currentQueueRef.current = queue; 
     internalPlaySong(song, false);
@@ -267,6 +259,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   /* ── YouTube Timer Sync ── */
   useEffect(() => {
     let interval: NodeJS.Timeout;
+    // THE FIX: Adding ytPlayer back to the dependencies so mobile waits for it to load!
     if (isPlaying && ytPlayerRef.current) {
       interval = setInterval(async () => {
         try {
@@ -281,7 +274,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       }, 1000);
     }
     return () => clearInterval(interval);
-  }, [isPlaying]);
+  }, [isPlaying, ytPlayer]); // <--- THIS IS THE FIX RIGHT HERE!
 
   /* ── OS Media Session API ── */
   useEffect(() => {
@@ -323,13 +316,11 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     } else if (state === 2) {
       setIsPlaying(false);
     } else if (state === 0) {
-      // Song ended! Check Sleep Timer first
       if (stopAfterTrackRef.current) {
         setIsPlaying(false);
         setSleepTimer(null);
         stopAfterTrackRef.current = false;
       } else {
-        // Loop Logic
         if (repeatModeRef.current === 2) {
           event.target.seekTo(0, true);
           event.target.playVideo();
@@ -372,7 +363,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         isShuffle,  
         setSleepTimerAction,
         playSong,
-        playContext, // Exposed to app
+        playContext, 
         togglePlay,
         seek,
         setVolume,
