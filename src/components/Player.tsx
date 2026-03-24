@@ -56,7 +56,6 @@ function formatTime(s: number): string {
   return `${m}:${sec.toString().padStart(2, '0')}`;
 }
 
-// FIXED: Receives the onArtistClick prop from App.tsx
 export function Player({ onArtistClick }: { onArtistClick: (name: string) => void }) {
   const playerContext = usePlayer() as any;
   const {
@@ -99,7 +98,7 @@ export function Player({ onArtistClick }: { onArtistClick: (name: string) => voi
 
   const showToast = (message: string) => {
     setToastMessage(message);
-    setTimeout(() => setToastMessage(null), 3000); // Disappears after 3 seconds
+    setTimeout(() => setToastMessage(null), 3000);
   };
 
   const isLiked = currentSong && userProfile?.likedSongs?.includes(currentSong.id);
@@ -321,6 +320,7 @@ export function Player({ onArtistClick }: { onArtistClick: (name: string) => voi
 
       {isExpanded && (
         <>
+          {/* MOBILE FULL SCREEN OVERLAY */}
           <div className="md:hidden fixed inset-0 z-[60] bg-zinc-950 flex flex-col pt-12 pb-8 px-6">
             <div className="flex items-center justify-between mb-8">
               <button onClick={() => setIsExpanded(false)} className="p-2 -ml-2 text-zinc-400 hover:text-white transition">
@@ -349,7 +349,24 @@ export function Player({ onArtistClick }: { onArtistClick: (name: string) => voi
             <div className="mb-6 flex items-start justify-between gap-4">
               <div className="flex-1 min-w-0">
                 <h2 className="text-2xl font-bold text-white mb-1 truncate">{currentSong.title}</h2>
-                <p className="text-emerald-400 text-lg truncate">{currentSong.artist.join(', ')}</p>
+                
+                {/* FIXED: Artist Name clickable in Mobile Full Screen! */}
+                <div className="text-emerald-400 text-lg truncate flex flex-wrap gap-x-1 gap-y-0">
+                  {currentSong.artist.map((artistName: string, index: number) => (
+                    <span
+                      key={artistName}
+                      onClick={(e) => { 
+                        e.stopPropagation(); 
+                        setIsExpanded(false); // Closes player so you can see the page
+                        onArtistClick(artistName); 
+                      }}
+                      className="cursor-pointer hover:text-emerald-300 transition-colors"
+                    >
+                      {artistName}{index < currentSong.artist.length - 1 ? ',' : ''}
+                    </span>
+                  ))}
+                </div>
+
               </div>
               <button onClick={handleToggleLike} className="mt-1 flex-shrink-0 hover:scale-110 active:scale-95 transition-transform">
                 {isLiked ? (
@@ -390,6 +407,7 @@ export function Player({ onArtistClick }: { onArtistClick: (name: string) => voi
             </div>
           </div>
 
+          {/* DESKTOP RIGHT SIDEBAR */}
           <div className="hidden md:flex fixed right-0 top-0 bottom-[72px] w-80 bg-zinc-900 border-l border-zinc-800/40 z-30 flex-col p-6 shadow-2xl overflow-y-auto">
             <div className="flex items-center justify-between mb-6">
               <h3 className="font-bold text-white">Now Playing</h3>
@@ -401,7 +419,24 @@ export function Player({ onArtistClick }: { onArtistClick: (name: string) => voi
             <div className="flex items-start justify-between gap-3 mb-6">
               <div className="flex-1 min-w-0">
                 <h2 className="text-xl font-bold text-white mb-1 truncate">{currentSong.title}</h2>
-                <p className="text-zinc-400 text-sm truncate">{currentSong.artist.join(', ')}</p>
+                
+                {/* FIXED: Artist Name clickable in Desktop Right Sidebar! */}
+                <div className="text-zinc-400 text-sm truncate flex flex-wrap gap-x-1 gap-y-0 mt-0.5">
+                  {currentSong.artist.map((artistName: string, index: number) => (
+                    <span
+                      key={artistName}
+                      onClick={(e) => { 
+                        e.stopPropagation(); 
+                        setIsExpanded(false); 
+                        onArtistClick(artistName); 
+                      }}
+                      className="cursor-pointer hover:text-emerald-400 transition-colors"
+                    >
+                      {artistName}{index < currentSong.artist.length - 1 ? ',' : ''}
+                    </span>
+                  ))}
+                </div>
+
               </div>
               <button onClick={handleToggleLike} className="mt-1 flex-shrink-0 hover:scale-110 active:scale-95 transition-transform">
                 {isLiked ? (
@@ -420,6 +455,7 @@ export function Player({ onArtistClick }: { onArtistClick: (name: string) => voi
         </>
       )}
 
+      {/* STANDARD BOTTOM BAR */}
       <div className={`fixed bottom-16 md:bottom-0 left-0 right-0 md:left-60 bg-zinc-900/95 backdrop-blur-xl border-t border-zinc-800/40 z-40 ${isExpanded ? 'hidden md:block' : 'block'}`}>
         <div className="relative h-1 group cursor-pointer">
           <div className="absolute inset-0 bg-zinc-700/60" />
@@ -434,12 +470,11 @@ export function Player({ onArtistClick }: { onArtistClick: (name: string) => voi
             <div className="min-w-0">
               <p className="text-sm font-semibold text-white truncate leading-tight group-hover:text-emerald-400 transition-colors">{currentSong.title}</p>
               
-              {/* FIXED: Artist Name now rendered as individually clickable spans! */}
+              {/* Bottom bar clickable mapping (already done) */}
               <div className="text-xs text-zinc-400 truncate mt-0.5 flex flex-wrap gap-x-1 gap-y-0">
                 {currentSong.artist.map((artistName: string, index: number) => (
                   <span
                     key={artistName}
-                    // FIXED: Calls the new callback prop passed from App.tsx
                     onClick={(e) => { e.stopPropagation(); onArtistClick(artistName); }}
                     className="cursor-pointer hover:text-emerald-400 transition-colors"
                   >
