@@ -3,8 +3,6 @@ import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../firebase';
 import { useAuth } from '../context/AuthContext';
 import { usePlayer } from '../context/PlayerContext';
-
-// PERFECTLY FIXED IMPORT: Reaches back into the components folder!
 import { HeartFilledIcon, MusicNoteIcon } from '../components/Icons'; 
 
 export function YourLibrary() {
@@ -13,7 +11,8 @@ export function YourLibrary() {
   const userProfile = authContext?.userProfile;
   
   const playerContext = usePlayer() as any;
-  const { songs, playSong, currentSong, isPlaying } = playerContext;
+  // ADDED: Imported playContext from the playerContext
+  const { songs, playSong, playContext, currentSong, isPlaying } = playerContext;
   
   const [playlists, setPlaylists] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -92,7 +91,8 @@ export function YourLibrary() {
               return (
                 <div 
                   key={song.id}
-                  onClick={() => playSong(song)}
+                  // UPDATED: Now uses playContext instead of playSong to lock the playlist queue!
+                  onClick={() => playContext ? playContext(song, displaySongs) : playSong(song)}
                   className={`flex items-center gap-4 p-3 rounded-lg cursor-pointer transition-colors group ${
                     isActive ? 'bg-zinc-800/80' : 'hover:bg-zinc-800/50'
                   }`}
