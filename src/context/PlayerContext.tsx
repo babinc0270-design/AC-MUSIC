@@ -10,8 +10,6 @@ import { collection, getDocs } from 'firebase/firestore';
 import { db } from '../firebase';
 import type { Song } from '../types';
 import YouTube, { YouTubeEvent, YouTubePlayer } from 'react-youtube';
-
-// ── NEW: Import AuthContext so the Player knows what the user likes! ──
 import { useAuth } from './AuthContext';
 
 interface PlayerContextValue {
@@ -47,7 +45,6 @@ export function usePlayer(): PlayerContextValue {
 }
 
 export function PlayerProvider({ children }: { children: ReactNode }) {
-  // ── Grab the User's Liked Songs ──
   const authContext = useAuth() as any;
   const likedSongsIds = authContext?.userProfile?.likedSongs || [];
 
@@ -131,7 +128,6 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     fetchSongs();
   }, []);
 
-  /* ── YOUTUBE-STYLE SMART AUTOPLAY LOGIC ── */
   const playNext = () => {
     setHasRepeatedOnce(false); 
 
@@ -143,10 +139,14 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
     let nextSong: Song | undefined = undefined;
 
-    // SCENARIO 1: We are inside a specific Playlist or Artist Page
     if (queue.length > 0) {
       if (isShuffleRef.current) {
-        const candidates = queue.filter(s => s.id !== current.id);
+        // FIXED: Don't repeat songs in a shuffled playlist queue either!
+        const recentHistoryIds = historyRef.current.slice(-queue.length + 1).map(s => s.id);
+        let candidates = queue.filter(s => s.id !== current.id && !recentHistoryIds.includes(s.id));
+        
+        if (candidates.length === 0) candidates = queue.filter(s => s.id !== current.id);
+        
         if (candidates.length > 0) {
           nextSong = candidates[Math.floor(Math.random() * candidates.length)];
         }
@@ -157,48 +157,49 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         }
       }
     } 
-    // SCENARIO 2: INFINITE RADIO (YouTube-Style Recommendation Engine)
     else {
       let candidates: Song[] = [];
       
+      // FIXED: Grab the last 15 songs played to prevent the "Ping-Pong" loop
+      const recentHistoryIds = historyRef.current.slice(-15).map(s => s.id);
+      
+      // Helper function to ensure we don't pick the current song OR a recently played song
+      const isEligible = (s: Song) => s.id !== current.id && !recentHistoryIds.includes(s.id);
+
       if (isShuffleRef.current) {
-        candidates = allSongs.filter((s) => s.id !== current.id);
+        candidates = allSongs.filter(isEligible);
       } else {
-        // Step 1: Find all songs this specific user has Liked
-        const userLikedSongs = allSongs.filter(s => likedSongsIds.includes(s.id) && s.id !== current.id);
+        const userLikedSongs = allSongs.filter(s => likedSongsIds.includes(s.id) && isEligible(s));
         
-        // Step 2: Are any of their Liked Songs similar to what is playing right now? (Artist or Genre)
-        const personalizedMatches = userLikedSongs.filter(s => 
+        let personalizedMatches = userLikedSongs.filter(s => 
           s.artist.some((a) => current.artist.includes(a)) || 
           (s as any).genre === (current as any).genre
         );
 
-        // Algorithm Logic Tree:
         if (personalizedMatches.length > 0) {
-          // Priority 1: A song they ALREADY LIKE that matches the current vibe
           candidates = personalizedMatches;
         } else {
-          // Priority 2: General songs by the exact same artist
-          candidates = allSongs.filter((s) => s.id !== current.id && s.artist.some((a) => current.artist.includes(a)));
+          candidates = allSongs.filter((s) => isEligible(s) && s.artist.some((a) => current.artist.includes(a)));
           
           if (candidates.length === 0) {
-            // Priority 3: General songs in the exact same genre
-            candidates = allSongs.filter((s) => s.id !== current.id && (s as any).genre === (current as any).genre);
+            candidates = allSongs.filter((s) => isEligible(s) && (s as any).genre === (current as any).genre);
           }
 
           if (candidates.length === 0 && userLikedSongs.length > 0) {
-            // Priority 4: "Surprise Me" - Just pick something else they like
             candidates = userLikedSongs;
           }
 
           if (candidates.length === 0) {
-            // Priority 5: Completely random
-            candidates = allSongs.filter((s) => s.id !== current.id);
+            candidates = allSongs.filter(isEligible);
           }
         }
       }
 
-      // Pick a random song from the winning candidate pool
+      // FAILSAFE: If the database is super small and everything is in the history, ignore history
+      if (candidates.length === 0) {
+        candidates = allSongs.filter(s => s.id !== current.id);
+      }
+
       if (candidates.length > 0) {
         nextSong = candidates[Math.floor(Math.random() * candidates.length)];
       }
@@ -418,4 +419,3 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     </PlayerContext.Provider>
   );
 }
-
