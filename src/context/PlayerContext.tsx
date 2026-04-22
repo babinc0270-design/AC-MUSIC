@@ -11,6 +11,9 @@ import { db } from '../firebase';
 import type { Song } from '../types';
 import YouTube, { YouTubeEvent, YouTubePlayer } from 'react-youtube';
 
+// ── NEW: Import AuthContext so the Player knows what the user likes! ──
+import { useAuth } from './AuthContext';
+
 interface PlayerContextValue {
   songs: Song[];
   loadingSongs: boolean;
@@ -44,10 +47,13 @@ export function usePlayer(): PlayerContextValue {
 }
 
 export function PlayerProvider({ children }: { children: ReactNode }) {
+  // ── Grab the User's Liked Songs ──
+  const authContext = useAuth() as any;
+  const likedSongsIds = authContext?.userProfile?.likedSongs || [];
+
   const [songs, setSongs] = useState<Song[]>([]);
   const [loadingSongs, setLoadingSongs] = useState(true);
 
-  // YouTube Player State
   const [ytPlayer, setYtPlayer] = useState<YouTubePlayer | null>(null);
   const ytPlayerRef = useRef<YouTubePlayer | null>(null); 
 
@@ -58,12 +64,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const [duration, setDuration] = useState(0);
   const [volume, setVolumeState] = useState(0.8);
 
-  /* ── Sleep Timer State & Refs ── */
   const [sleepTimer, setSleepTimer] = useState<number | 'track' | null>(null);
   const sleepTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const stopAfterTrackRef = useRef<boolean>(false);
 
-  /* ── Loop & Shuffle State & Refs ── */
   const [repeatMode, setRepeatModeState] = useState(0);
   const repeatModeRef = useRef(0);
   const setRepeatMode = (mode: number) => {
@@ -91,7 +95,6 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const songsRef = useRef<Song[]>([]);
   const currentQueueRef = useRef<Song[]>([]); 
 
-  /* ── Sleep Timer Logic ── */
   const setSleepTimerAction = (option: number | 'track' | null) => {
     if (sleepTimeoutRef.current) {
       clearTimeout(sleepTimeoutRef.current);
@@ -111,7 +114,6 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  /* ── Fetch Live Database ── */
   useEffect(() => {
     const fetchSongs = async () => {
       try {
@@ -129,7 +131,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     fetchSongs();
   }, []);
 
-  /* ── Auto-Play Context Logic ── */
+  /* ── YOUTUBE-STYLE SMART AUTOPLAY LOGIC ── */
   const playNext = () => {
     setHasRepeatedOnce(false); 
 
@@ -141,6 +143,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
     let nextSong: Song | undefined = undefined;
 
+    // SCENARIO 1: We are inside a specific Playlist or Artist Page
     if (queue.length > 0) {
       if (isShuffleRef.current) {
         const candidates = queue.filter(s => s.id !== current.id);
@@ -154,19 +157,48 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         }
       }
     } 
+    // SCENARIO 2: INFINITE RADIO (YouTube-Style Recommendation Engine)
     else {
       let candidates: Song[] = [];
+      
       if (isShuffleRef.current) {
         candidates = allSongs.filter((s) => s.id !== current.id);
       } else {
-        candidates = allSongs.filter((s) => s.id !== current.id && s.artist.some((a) => current.artist.includes(a)));
-        if (candidates.length === 0) {
-          candidates = allSongs.filter((s) => s.id !== current.id && (s as any).genre === (current as any).genre);
-        }
-        if (candidates.length === 0) {
-          candidates = allSongs.filter((s) => s.id !== current.id);
+        // Step 1: Find all songs this specific user has Liked
+        const userLikedSongs = allSongs.filter(s => likedSongsIds.includes(s.id) && s.id !== current.id);
+        
+        // Step 2: Are any of their Liked Songs similar to what is playing right now? (Artist or Genre)
+        const personalizedMatches = userLikedSongs.filter(s => 
+          s.artist.some((a) => current.artist.includes(a)) || 
+          (s as any).genre === (current as any).genre
+        );
+
+        // Algorithm Logic Tree:
+        if (personalizedMatches.length > 0) {
+          // Priority 1: A song they ALREADY LIKE that matches the current vibe
+          candidates = personalizedMatches;
+        } else {
+          // Priority 2: General songs by the exact same artist
+          candidates = allSongs.filter((s) => s.id !== current.id && s.artist.some((a) => current.artist.includes(a)));
+          
+          if (candidates.length === 0) {
+            // Priority 3: General songs in the exact same genre
+            candidates = allSongs.filter((s) => s.id !== current.id && (s as any).genre === (current as any).genre);
+          }
+
+          if (candidates.length === 0 && userLikedSongs.length > 0) {
+            // Priority 4: "Surprise Me" - Just pick something else they like
+            candidates = userLikedSongs;
+          }
+
+          if (candidates.length === 0) {
+            // Priority 5: Completely random
+            candidates = allSongs.filter((s) => s.id !== current.id);
+          }
         }
       }
+
+      // Pick a random song from the winning candidate pool
       if (candidates.length > 0) {
         nextSong = candidates[Math.floor(Math.random() * candidates.length)];
       }
@@ -182,7 +214,6 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   playNextRef.current = playNext;
 
-  /* ── Previous Logic ── */
   const playPrevious = () => {
     if (currentTime > 3) {
       seek(0);
@@ -196,7 +227,6 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  /* ── Core Play Logic ── */
   const internalPlaySong = (song: Song, isBacktrack: boolean) => {
     if (currentSongRef.current?.id === song.id) {
       togglePlay();
@@ -256,10 +286,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     setVolumeState(clamped);
   };
 
-  /* ── YouTube Timer Sync ── */
   useEffect(() => {
     let interval: NodeJS.Timeout;
-    // THE FIX: Adding ytPlayer back to the dependencies so mobile waits for it to load!
     if (isPlaying && ytPlayerRef.current) {
       interval = setInterval(async () => {
         try {
@@ -274,9 +302,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       }, 1000);
     }
     return () => clearInterval(interval);
-  }, [isPlaying, ytPlayer]); // <--- THIS IS THE FIX RIGHT HERE!
+  }, [isPlaying, ytPlayer]); 
 
-  /* ── OS Media Session API ── */
   useEffect(() => {
     if ('mediaSession' in navigator && currentSong) {
       navigator.mediaSession.metadata = new MediaMetadata({
@@ -301,7 +328,6 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     }
   }, [currentSong]); 
 
-  /* ── YouTube Player Events ── */
   const onPlayerReady = (event: YouTubeEvent) => {
     setYtPlayer(event.target);
     ytPlayerRef.current = event.target;
@@ -392,3 +418,4 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     </PlayerContext.Provider>
   );
 }
+
